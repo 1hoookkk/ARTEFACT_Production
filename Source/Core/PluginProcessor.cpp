@@ -98,6 +98,22 @@ void ARTEFACTAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     spectralSynthEngineStub.prepareToPlay(sampleRate, samplesPerBlock, 2); // Y2K theme audio
     audioRecorder.prepareToPlay(sampleRate, samplesPerBlock);
     
+    // Always-on character chain: EMU → Spectral → Tube
+    emuFilter.prepareToPlay(sampleRate, samplesPerBlock);
+    tubeStage.prepare(sampleRate, samplesPerBlock);
+    
+    // Configure EMU filter for "pre-sweetening" (trims >14kHz fizz, adds signature mid-bite)
+    emuFilter.setCutoff(0.7f);        // ~3.5kHz cutoff for signature EMU character  
+    emuFilter.setResonance(0.3f);     // Moderate resonance for musicality
+    emuFilter.setFilterType(0);       // Low-pass for high-freq taming
+    emuFilter.setVintageMode(true);   // Enable analog drift and nonlinearity
+    
+    // Configure tube stage for "final glue" (vintage compression, 2nd/3rd harmonics)
+    tubeStage.setDrive(6.0f);         // Moderate drive for character without distortion
+    tubeStage.setBias(0.1f);          // Slight bias for asymmetric harmonics
+    tubeStage.setOversampling(2);     // 2x oversampling for quality
+    tubeStage.setAutoGain(true);      // Maintain consistent levels
+    
     // AUDIO FIX: Enable PaintEngine by default for immediate audio generation
     paintEngine.setActive(true);  // Now safe with thread safety fixes
     
@@ -1024,9 +1040,18 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     switch (currentMode)
     {
     case ProcessingMode::Canvas:
-        // Canvas mode: PaintEngine + SpectralSynthEngine for SpectralCanvas Pro functionality
+        // Canvas mode: Always-on character chain EMU → Spectral → Tube
+        // This implements the "impossible to bypass" vintage analog processing philosophy
+        
+        // Step 1: EMU pre-sweetening (trims >14kHz fizz, adds signature mid-bite)
+        emuFilter.processBlock(buffer);
+        
+        // Step 2: Paint-driven spectral synthesis (with harmonic quantization)
         paintEngine.processBlock(buffer);
         spectralSynthEngine.processBlock(buffer);
+        
+        // Step 3: Tube stage final glue (vintage compression, 2nd/3rd harmonics align)  
+        tubeStage.process(buffer);
         break;
         
     case ProcessingMode::Forge:
@@ -1035,15 +1060,18 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         break;
         
     case ProcessingMode::Hybrid:
-        // Hybrid mode: Mix both processors
+        // Hybrid mode: Mix both processors through the always-on character chain
         {
             juce::AudioBuffer<float> paintBuffer(buffer.getNumChannels(), buffer.getNumSamples());
             paintBuffer.clear();
             
-            // Process paint engine into separate buffer
+            // Process paint engine with character chain into separate buffer
+            emuFilter.processBlock(paintBuffer);
             paintEngine.processBlock(paintBuffer);
+            spectralSynthEngine.processBlock(paintBuffer);
+            tubeStage.process(paintBuffer);
             
-            // Process forge engine into main buffer
+            // Process forge engine into main buffer (no character processing for pure forge)
             forgeProcessor.processBlock(buffer, midi);
             
             // Mix the two signals (50/50 for now - could be parameterized)

@@ -74,7 +74,11 @@
       "Bash(timeout 120 cmake --build build --config RelWithDebInfo --target SpectralCanvas_VST3)",
       "Bash(timeout 120 cmake --build build --config RelWithDebInfo --target SpectralCanvas_Standalone)",
       "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''build'' -Recurse -Include ''*.vst3'' | Select-Object FullName, LastWriteTime\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"if (Test-Path ''build-juce8'') { Remove-Item ''build-juce8'' -Recurse -Force -ErrorAction SilentlyContinue }\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"if (Test-Path ''build-juce8'') { Remove-Item ''build-juce8'' -Recurse -Force }; if (Test-Path ''CMakeCache.txt'') { Remove-Item ''CMakeCache.txt'' }\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production\\build'' -Recurse -Include ''*.exe'', ''*.vst3'' | Where-Object { $_LastWriteTime -gt (Get-Date).AddMinutes(-5) } | Select-Object FullName, LastWriteTime\")",
+      "Bash(timeout 30 cmake --build build --config RelWithDebInfo --target TestPaintProducesAudio)"
     ],
     "deny": [],
     "ask": [],

@@ -1,4 +1,6 @@
 #include "SpectralSynthEngine.h"
+#include "HarmonicQuantizer.h"
+#include "TransientDetector.h"
 
 using namespace juce;
 
@@ -72,15 +74,24 @@ void SpectralSynthEngine::createVoiceFromGesture(const PaintEvent& g) noexcept
     v.active = true;
     v.ageSamples = 0;
 
+    // Calculate raw frequency from Y position (logarithmic mapping)
     float y = juce::jlimit(0.0f, 1.0f, g.ny);
     float low = 55.0f;
     float high = 1760.0f;
-    float freq = low * std::pow(high / low, y);
-    v.baseFreq = freq;
+    float baseFreq = low * std::pow(high / low, y);
+    
+    // Get pressure for snap strength
+    float pressure = juce::jlimit(0.0f, 1.0f, g.pressure <= 0.0f ? 1.0f : g.pressure);
+    
+    // Map pressure to sigma (in cents) - higher pressure = tighter snap
+    double sigmaCents = scp::pressureToSigmaCents(pressure);
+    
+    // Apply advanced harmonic quantization with frequency blend
+    double dummyWeightCents = 0.0;
+    v.baseFreq = static_cast<float>(scp::computeSnappedFrequencyCmaj(baseFreq, sigmaCents, dummyWeightCents));
 
     v.pan = juce::jlimit(0.0f, 1.0f, g.nx);
 
-    float pressure = juce::jlimit(0.0f, 1.0f, g.pressure <= 0.0f ? 1.0f : g.pressure);
     v.envLevel = pressure;
     float sustainSec = 0.05f + pressure * 1.2f;
     v.envDecay = 1.0f / (float)(std::max(1.0, sustainSec * sampleRate_));
@@ -98,9 +109,41 @@ void SpectralSynthEngine::createVoiceFromGesture(const PaintEvent& g) noexcept
         float diff = (harm - centerHarm);
         float amp = std::expf(- (diff * diff) / (2.0f * sigma * sigma));
         amp *= harmonicDepth * (1.0f / (1.0f + 0.05f * p));
+        
+        // Calculate partial frequency
+        float partialFreq = v.baseFreq * harm;
+        
+        // --- Harmonic quantization per partial (frequency-blend + amplitude hybrid) ---
+        // Skip quantization for transient partials (high amplitude = likely transient)
+        constexpr float kTransientAmpThreshold = 0.35f; // From TransientDetector::kAmplitudeThreshold
+        bool isTransient = (amp > kTransientAmpThreshold);
+        
+        if (!isTransient && pressure > 0.1f) // Only quantize sustained partials with meaningful pressure
+        {
+            // Compute snap weight and blended frequency for this partial
+            double partialSigma = scp::pressureToSigmaCents(pressure);
+            double weightCents = 0.0;
+            double snappedFreq = scp::computeSnappedFrequencyCmaj(partialFreq, partialSigma, weightCents);
+            
+            // Compute weight for amplitude boost
+            double midiF = scp::freqToMidiDouble(partialFreq);
+            int tgtMidi = scp::computeNearestTargetMidiForScale(partialFreq, scp::C_MAJOR_PCS);
+            double dCents = (midiF - double(tgtMidi)) * 100.0;
+            // Clamp to ±600 cents
+            if (dCents > 600.0) dCents = 600.0;
+            if (dCents < -600.0) dCents = -600.0;
+            double w = std::exp(-(dCents * dCents) / (2.0 * partialSigma * partialSigma));
+            
+            // Apply frequency blend
+            partialFreq = static_cast<float>(snappedFreq);
+            
+            // Apply mild amplitude reinforcement for snapped partials
+            amp *= (1.0f + kHarmonicAmpBoost * static_cast<float>(w));
+        }
+        
         v.amplitudes[p] = amp * 0.6f * pressure;
         v.phases[p] = 0.0f;
-        v.phaseIncs[p] = (float)((2.0 * MathConstants<double>::pi * freq * (p+1)) / sampleRate_);
+        v.phaseIncs[p] = (float)((2.0 * MathConstants<double>::pi * partialFreq) / sampleRate_);
     }
     for (int p = numPartials_.load(); p < kMaxPartials; ++p)
     {

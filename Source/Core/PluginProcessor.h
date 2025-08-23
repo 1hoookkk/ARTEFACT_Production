@@ -12,6 +12,8 @@
 #include "Core/SpectralSynthEngine.h"
 #include "Core/SpectralSynthEngineStub.h"
 #include "Core/PaintQueue.h"
+#include "Core/EMUFilter.h"
+#include "Core/TubeStage.h"
 
 class ARTEFACTAudioProcessor : public juce::AudioProcessor,
     public juce::AudioProcessorValueTreeState::Listener
@@ -54,6 +56,10 @@ public:
     SpectralSynthEngine& getSpectralSynthEngine() { return spectralSynthEngine; }
     SpectralSynthEngineStub* getSpectralSynthEngineStub() { return &spectralSynthEngineStub; }
     AudioRecorder& getAudioRecorder() { return audioRecorder; }
+    
+    // Always-on character chain accessors
+    EMUFilter& getEMUFilter() { return emuFilter; }
+    TubeStage& getTubeStage() { return tubeStage; }
     
     // Paint queue interface for Y2K theme
     SpectralPaintQueue* getPaintQueue() { return &paintQueue; }
@@ -110,6 +116,10 @@ private:
     SpectralSynthEngineStub spectralSynthEngineStub;
     ParameterBridge parameterBridge;
     AudioRecorder audioRecorder;
+    
+    // Always-on character chain: EMU → Spectral → Tube
+    EMUFilter emuFilter;
+    TubeStage tubeStage;
 
     enum class ProcessingMode { Forge = 0, Canvas, Hybrid };
     ProcessingMode currentMode = ProcessingMode::Canvas;

@@ -1,7 +1,7 @@
 ---
 name: maker-agent
 description: Code generation and patch creation
-model: opus
+model: inherit
 ---
 
 # MISSION

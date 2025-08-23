@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PaintQueue.h"
+#include "TransientDetector.h"
 
 class SpectralSynthEngine
 {
@@ -58,6 +59,14 @@ private:
     std::atomic<float> masterGain_{0.9f};
     std::atomic<int> numPartials_{16};
     std::atomic<int> maxVoices_{6};
+    
+    // Amplitude boost for snapped partials
+    static constexpr float kHarmonicAmpBoost = 0.15f;
+    // Partial culling threshold (-60dB)
+    static constexpr float kPartialCullThreshold = 0.001f;
+    
+    // Transient detection
+    scp::TransientDetector transientDetector_;
 
     inline float sineFromTable(float phase) const noexcept;
     bool tryPopGestureInternal(PaintEvent& out) noexcept;

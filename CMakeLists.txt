@@ -1,15 +1,20 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.24)
 project(SpectralCanvas VERSION 1.0.0)
 
-# C++ Standard
-set(CMAKE_CXX_STANDARD 17)
+# C++ Standard - Upgraded to C++23 for modern features
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Fetch JUCE - Use latest stable release (7.0.12)
+# Build options
+option(BUILD_LEGACY "Build legacy sources that reference pre-refactor APIs" OFF)
+option(WARNINGS_AS_ERRORS "Treat warnings as errors (CI recommended)" OFF)
+
+# Fetch JUCE - Using JUCE 8.0.8 with C++23 support
 include(FetchContent)
 
-# Using JUCE 7.0.12 (latest stable at time of writing)
-set(JUCE_VERSION "7.0.12")
+# Using JUCE 8.0.8 - Latest stable release with C++23 support
+set(JUCE_VERSION "8.0.8")
 message(STATUS "Using JUCE version: ${JUCE_VERSION}")
 
 FetchContent_Declare(juce
@@ -48,7 +53,7 @@ target_sources(SpectralCanvas PRIVATE
     Source/GUI/PluginEditor.cpp
     
     # Paint-to-Audio Engine
-    Source/CanvasComponent.cpp
+    # Source/CanvasComponent.cpp  # LEGACY: Excluded - references old SpectralSynthEngine APIs
     Source/Core/PaintEngine.cpp
     Source/Core/SpectralSynthEngine.cpp
     Source/Core/SampleMaskingEngine.cpp
@@ -105,18 +110,18 @@ target_sources(SpectralCanvas PRIVATE
     Source/UI/AssetIntegration.h
     Source/UI/AssetTestComponent.h
     Source/UI/MysteryButton.h
-    Source/GUI/StandaloneSampleSlot.cpp
+    # Source/GUI/StandaloneSampleSlot.cpp  # LEGACY: Excluded - references old APIs
     Source/GUI/Skin/SpectralLookAndFeel.cpp
     Source/GUI/Skin/LogoComponent.cpp
     # MVP Minimal Editor
     Source/GUI/PluginEditorMVP.cpp
     
     # Essential UI Components (fix for paint-to-audio interface)
-    Source/GUI/PaintControlPanel.cpp
+    # Source/GUI/PaintControlPanel.cpp  # LEGACY: Excluded - potential API compatibility issues
     Source/GUI/HeaderBarComponent.cpp
-    Source/GUI/ForgePanel.cpp
+    # Source/GUI/ForgePanel.cpp  # LEGACY: Excluded - potential API compatibility issues
     Source/GUI/ArtefactLookAndFeel.cpp
-    Source/GUI/SampleSlotComponent.cpp
+    # Source/GUI/SampleSlotComponent.cpp  # LEGACY: Excluded - potential API compatibility issues
     
     # Utilities
     Source/Core/ColorToSpectralMapper.cpp
@@ -156,6 +161,9 @@ target_compile_definitions(SpectralCanvas PRIVATE
 target_compile_definitions(SpectralCanvas PRIVATE SC_MVP_UI=1)
 target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_MVP_UI=1)
 
+# Legacy build control
+target_compile_definitions(SpectralCanvas PRIVATE BUILD_LEGACY=$<BOOL:${BUILD_LEGACY}>)
+
 # Include directories
 target_include_directories(SpectralCanvas PRIVATE
     Source
@@ -182,8 +190,41 @@ target_link_libraries(SpectralCanvas PRIVATE
 # Generate JUCE header
 juce_generate_juce_header(SpectralCanvas)
 
+# Demo harness for testing EMU->Spectral->Tube chain
+juce_add_console_app(render_test_input
+    PRODUCT_NAME "SpectralCanvas Render Test")
+
+target_sources(render_test_input PRIVATE
+    Source/Tools/render_test_input.cpp
+    Source/Core/SpectralSynthEngine.cpp
+    Source/Core/EMUFilter.cpp
+    Source/Core/TubeStage.cpp
+    Source/Core/AtomicOscillator.cpp
+    Source/Core/ColorToSpectralMapper.cpp
+    Source/Core/CDPSpectralEngine.cpp
+    Source/Core/PerformanceProfiler.cpp
+    Source/Util/Determinism.cpp)
+
+target_include_directories(render_test_input PRIVATE Source)
+
+target_link_libraries(render_test_input PRIVATE
+    juce::juce_audio_formats
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+)
+
+target_compile_definitions(render_test_input PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+)
+
+juce_generate_juce_header(render_test_input)
+
 # Host Harness tool for editor lifecycle testing
-option(BUILD_HOST_HARNESS "Build the HostHarness tool" ON)
+option(BUILD_HOST_HARNESS "Build the HostHarness tool" OFF)
 if(BUILD_HOST_HARNESS)
     add_subdirectory(tools/HostHarness)
 endif()
@@ -269,6 +310,7 @@ if(BUILD_TESTS)
         Source/Tests/PerformanceRegressionTests.cpp
         Source/Tests/TestEnginePreparedness.cpp
         Source/Tests/ThreadSafetyTests.cpp
+        Source/Tests/TestHarmonicQuantizer.cpp
         Source/Core/PaintEngine.cpp
         Source/Core/ForgeProcessor.cpp
         Source/Core/ForgeVoice.cpp
