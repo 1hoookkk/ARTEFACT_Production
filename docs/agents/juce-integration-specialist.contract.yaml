@@ -1,0 +1,287 @@
+# JUCE Integration Specialist Contract v1.0
+# JUCE framework integration and lifecycle validator for SpectralCanvas Pro
+
+name: juce-integration-specialist
+version: "1.0.0"
+model: analysis-only
+color: green
+priority: high
+
+description: >
+  Enforces JUCE best practices, validates AudioProcessorValueTreeState (APVTS) usage,
+  ensures proper component lifecycle management, and detects GUI↔Audio thread boundary violations.
+  Focus on SpectralCanvas Pro's paint-to-audio parameter flow and RT-safety.
+
+# Best-of-N Design Options  
+design_options:
+  champion: lifecycle_aware
+  alternatives:
+    - rules_based
+    - apvts_focused
+    
+  rules_based:
+    approach: "Static pattern matching for JUCE violations"
+    coverage: broad
+    accuracy: medium
+    speed: fast
+    tradeoffs: "Fast scanning but misses context-sensitive bugs"
+    
+  apvts_focused:
+    approach: "Deep APVTS parameter flow analysis"
+    coverage: narrow
+    accuracy: high
+    speed: medium
+    tradeoffs: "Excellent for parameter issues but limited scope"
+    
+  lifecycle_aware:
+    approach: "Component state tracking with lifecycle validation"
+    coverage: broad
+    accuracy: high  
+    speed: medium
+    tradeoffs: "Catches subtle lifecycle bugs, moderate complexity"
+
+# JUCE Pattern Rules
+rules:
+  apvts_safety:
+    snapshot_per_block:
+      description: "APVTS parameters should be snapshotted once per processBlock"
+      pattern: "apvts.*getRawParameterValue.*processBlock"
+      severity: high
+      safe_pattern: "auto snapshot = apvts.copyState()"
+      
+    gui_thread_mutation:
+      description: "GUI thread should not mutate parameters directly during audio processing"
+      denylist:
+        - "setParameterNotifyingHost.*timerCallback"
+        - "apvts.*setValue.*paint"
+        - "parameter.*setValue.*mouseDown"
+      severity: critical
+      
+    atomic_parameter_access:
+      description: "Parameters accessed from audio thread should use atomic reads"
+      required_patterns:
+        - "getRawParameterValue"
+        - "getParameterAsValue.*load"
+      severity: high
+
+  component_lifecycle:
+    initialization_order:
+      description: "Components should initialize before audio processing starts"
+      check_sequence:
+        - "prepareToPlay before processBlock"
+        - "APVTS construction before component creation" 
+        - "Timer start after component ready"
+      severity: critical
+      
+    destruction_safety:
+      description: "Components should stop timers before destruction"
+      required_patterns:
+        - "stopTimer.*destructor"
+        - "atomic.*store.*false.*destructor"
+      denylist:
+        - "delete.*timer.*running"
+      severity: high
+      
+  thread_boundaries:
+    gui_to_audio:
+      description: "GUI should not call audio thread functions directly"
+      denylist:
+        - "processBlock.*mouseDown"
+        - "synthesize.*timerCallback" 
+        - "SpectralSynthEngine.*Component.*paint"
+      exceptions:
+        - "SpscRing::forcePush"  # Allowed lock-free communication
+      severity: critical
+      
+    callback_safety:
+      description: "Audio thread should not hold references to GUI components"
+      denylist:
+        - "Component.*processBlock"
+        - "repaint.*synthesis"
+        - "callAsync.*audio.*thread"
+      severity: critical
+
+# APVTS Analysis
+apvts_patterns:
+  parameter_snapshot:
+    best_practice: |
+      void processBlock(AudioBuffer& buffer) {
+          // Snapshot parameters once per block
+          const auto freq = freqParam->load();
+          const auto amp = ampParam->load();
+          
+          // Use snapshot values throughout processing
+          engine.setFrequency(freq);
+          engine.setAmplitude(amp);
+      }
+    violations:
+      - "getRawParameterValue called multiple times per block"
+      - "Parameter accessed directly in inner loops"
+      - "String parameter conversion in audio thread"
+      
+  parameter_smoothing:
+    required_for:
+      - "frequency parameters"
+      - "amplitude parameters"  
+      - "filter cutoff parameters"
+    pattern: "LinearSmoothedValue"
+    severity: medium
+
+# Component Lifecycle Validation
+lifecycle_checks:
+  initialization:
+    sequence:
+      - "Constructor: Initialize non-audio members"
+      - "prepareToPlay: Initialize audio processing"
+      - "componentShown: Start timers/UI updates"
+    violations:
+      - "Timer started in constructor"
+      - "Audio processing in constructor"
+      - "Heavy initialization in audio thread"
+      
+  destruction:
+    sequence:
+      - "componentHidden: Stop timers first"
+      - "Destructor: Clean up resources"
+      - "Audio thread: Check atomic flags before access"
+    violations:
+      - "Timer running during destruction"
+      - "Audio thread accessing destroyed components"
+      - "Missing atomic safety flags"
+
+# Trigger Conditions
+triggers:
+  diff_path_matches:
+    - "Source/GUI/**"
+    - "Source/Core/PluginProcessor.*"
+    - "Source/CanvasComponent.*"
+    - "Source/**/PluginEditor.*"
+  diff_contains:
+    - "AudioProcessorValueTreeState"
+    - "APVTS"
+    - "getRawParameterValue"
+    - "Component::"
+    - "Timer::"
+    - "processBlock"
+    - "prepareToPlay"
+    - "mouseDown"
+    - "timerCallback"
+
+# Analysis Scope
+analysis_scope:
+  gui_components:
+    - "PluginEditor"
+    - "CanvasComponent"  
+    - "Any class inheriting from Component"
+  audio_classes:
+    - "PluginProcessor"
+    - "SpectralSynthEngine"
+    - "AudioProcessor::processBlock"
+  parameter_classes:
+    - "AudioProcessorValueTreeState"
+    - "AudioParameterFloat"
+    - "AudioParameterChoice"
+
+# Output Specification
+output:
+  format: markdown
+  schema:
+    sections:
+      - name: "Findings"
+        content:
+          violations:
+            - type: enum[critical, high, medium, low]
+              rule: string
+              file: string
+              line: integer  
+              description: string
+              code_excerpt: string
+          summary:
+            total_violations: integer
+            by_severity: object
+            
+      - name: "CodeSamples" 
+        content:
+          violations:
+            - issue: string
+              bad_code: string
+              good_code: string
+              explanation: string
+              
+      - name: "SuggestedFixes"
+        content:
+          quick_fixes:
+            - description: string
+              file: string
+              old_code: string
+              new_code: string
+              priority: enum[immediate, high, medium, low]
+          architectural_improvements:
+            - recommendation: string
+              rationale: string
+              effort_estimate: string
+
+# Test Fixtures
+test_fixtures:
+  - name: "apvts_multiple_access"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          for (int i = 0; i < buffer.getNumSamples(); ++i) {
+              auto freq = freqParam->getRawParameterValue(); // VIOLATION
+              // process sample
+          }
+      }
+    expected_violations: ["Parameter accessed in inner loop"]
+    
+  - name: "gui_thread_mutation"
+    code: |
+      void timerCallback() {
+          if (someCondition) {
+              freqParam->setParameterNotifyingHost(newValue); // VIOLATION
+          }
+      }
+    expected_violations: ["GUI thread parameter mutation"]
+    
+  - name: "safe_apvts_usage"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          const auto freq = freqParam->load(); // SAFE
+          for (int i = 0; i < buffer.getNumSamples(); ++i) {
+              // Use 'freq' value throughout
+          }
+      }
+    expected_violations: []
+
+# Posthooks
+posthooks:
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"UIIntegration\")"
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"SpectralCoreTests\")"
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"TestAPVTSParams\")"
+
+# Performance KPIs
+kpis:
+  violations_count: "minimize"
+  guidance_quality_score: "> 0.8"  # User feedback on suggestion quality
+  analysis_time_sec: "< 60"
+  false_positive_rate: "< 0.2"
+
+# Context Knowledge  
+project_context:
+  paint_to_audio_flow: |
+    CanvasComponent (GUI) → SpscRing → SpectralSynthEngine (Audio)
+    Parameters: APVTS → Atomic loads → Audio processing
+  critical_components:
+    - "PluginProcessor: Main audio processing host"
+    - "CanvasComponent: Paint gesture capture"  
+    - "SpectralSynthEngine: Real-time synthesis"
+    - "PaintQueue: Lock-free UI→Audio communication"
+  apvts_parameters:
+    - "Frequency parameters for oscillators"
+    - "Filter parameters for EMU-style processing"
+    - "Canvas parameters for coordinate mapping"
+    - "Paint parameters for gesture sensitivity"
+  lifecycle_complexity:
+    - "Timer-driven canvas updates during paint gestures"
+    - "Atomic flags for safe component destruction"  
+    - "APVTS initialization before audio processing"
+    - "RT-safe parameter snapshotting in processBlock"

@@ -1,0 +1,227 @@
+# Best-of-N Agent Trial Harness v1.0
+# Scoring and validation system for SpectralCanvas Pro subagents
+
+# Migration Metadata
+source_path: "docs/agents/BestOfN.yml"
+migration_date: "2025-08-20"
+note: "Mirrored for .claude integration, original in docs/agents/ for human access"
+
+version: "1.0.0"
+description: "Trial harness for evaluating and scoring agent performance with Best-of-N selection"
+
+# Trial Configuration
+trial_configuration:
+  trial_window: "last_30_commits"
+  evaluation_method: "seeded_fixtures + real_world_diffs"
+  scoring_rubric:
+    weights:
+      quality: 0.5    # Accuracy and completeness
+      safety: 0.3     # RT-safety and guardrail compliance  
+      speed: 0.2      # Analysis time and responsiveness
+    total_score_range: [0.0, 1.0]
+
+# Agent Registry
+agents:
+  - name: "rt-audio-guardian"
+    variants: ["spsc-queue-validator", "atomic-ordering-checker", "denormal-detector"]
+    
+  - name: "dsp-frequency-oracle" 
+    variants: ["logarithmic-mapping-validator", "stft-phase-continuity", "aliasing-guard"]
+    
+  - name: "juce-integration-specialist"
+    variants: ["parameter-snapshot-auditor", "gui-audio-boundary-checker", "component-lifecycle-validator"]
+    
+  - name: "build-stability-monitor"
+    variants: ["windows-macro-hygiene", "module-link-order", "test-infrastructure-validator"]
+
+# Quality Scoring Framework
+quality_metrics:
+  seeded_fixtures:
+    rt_audio_guardian:
+      - name: "locks_in_processBlock"
+        code: |
+          void processBlock(AudioBuffer& buffer) {
+              std::lock_guard<std::mutex> lock(mutex_);  // VIOLATION
+              // audio processing
+          }
+        expected_violations: 1
+        weight: 1.0
+        
+      - name: "alloc_in_process"
+        code: |
+          void SpectralSynthEngine::synthesize() {
+              auto temp = std::make_unique<float[]>(1024);  // VIOLATION
+              // synthesis
+          }
+        expected_violations: 1
+        weight: 1.0
+        
+      - name: "safe_atomic_usage"
+        code: |
+          void processBlock(AudioBuffer& buffer) {
+              auto freq = frequency_.load(std::memory_order_relaxed);  // SAFE
+              // processing
+          }
+        expected_violations: 0
+        weight: 0.8
+        
+    dsp_frequency_oracle:
+      - name: "bad_log_mapping"
+        code: |
+          float mapYToFreq(int y, int height) {
+              return 20.0f + (y * 19980.0f / height);  // LINEAR - VIOLATION
+          }
+        expected_violations: 1
+        weight: 1.0
+        
+      - name: "correct_log_mapping"
+        code: |
+          float mapYToFreq(int y, int height) {
+              float norm_y = static_cast<float>(y) / height;
+              return 20.0f * std::pow(1000.0f, norm_y);  // LOGARITHMIC - OK
+          }
+        expected_violations: 0
+        weight: 1.0
+        
+    build_stability_monitor:
+      - name: "minmax_macro"
+        code: |
+          #include <windows.h>
+          #include <algorithm>
+          auto result = std::max(1, 2);  // WILL FAIL
+        expected_violations: 1
+        weight: 1.0
+
+  accuracy_calculation:
+    precision: "true_positives / (true_positives + false_positives)"
+    recall: "true_positives / (true_positives + false_negatives)"
+    f1_score: "2 * (precision * recall) / (precision + recall)"
+    false_positive_penalty: 0.2  # Reduce score for false alarms
+
+# Safety Scoring Framework  
+safety_metrics:
+  read_only_compliance:
+    description: "Agents must only use Read, Grep tools"
+    violation_penalty: 1.0  # Complete failure
+    allowed_tools: ["Read", "Grep"]
+    
+  posthook_compliance:
+    description: "Posthooks must only use Task(ctest ...) commands"
+    allowed_patterns: ["Task\\(ctest.*\\)"]
+    violation_penalty: 0.5
+    
+  output_determinism:
+    description: "Outputs must be schema-compliant and deterministic"
+    schema_validation: true
+    uncertainty_handling: "Must emit {status: uncertain} when no evidence"
+    hallucination_penalty: 0.8
+
+  anti_hallucination_guardrails:
+    required_patterns:
+      - "status: uncertain when evidence insufficient"
+      - "reason: explicit justification for uncertainty"
+      - "confidence_level: numerical confidence scores"
+    scoring: "Deduct points for unsupported claims"
+
+# Speed Scoring Framework
+speed_metrics:
+  target_performance:
+    p95_seconds_per_run: 60     # 95th percentile analysis time
+    p50_seconds_per_run: 30     # Median analysis time  
+    timeout_threshold: 120      # Hard timeout
+    
+  performance_scoring:
+    excellent: "< 30 seconds = 1.0 score"
+    good: "30-60 seconds = 0.8 score"
+    acceptable: "60-120 seconds = 0.6 score"
+    timeout: "> 120 seconds = 0.0 score"
+    
+  efficiency_factors:
+    file_scanning_speed: "Files analyzed per second"
+    pattern_matching_efficiency: "Patterns checked per second"
+    output_generation_time: "Time to generate report"
+
+# Validation Protocol
+validation_protocol:
+  test_execution:
+    1_seeded_fixtures: "Run all agents against known test cases"
+    2_real_world_diffs: "Apply to actual repository changes"
+    3_cross_validation: "Compare agent outputs on same input"
+    4_human_validation: "Spot-check agent findings"
+    
+  scoring_calculation:
+    individual_scores:
+      quality_score: "weighted accuracy on test fixtures"
+      safety_score: "compliance with read-only + posthook rules" 
+      speed_score: "performance against time targets"
+    composite_score: "quality * 0.5 + safety * 0.3 + speed * 0.2"
+    
+  champion_selection:
+    criteria: "Highest composite score"
+    minimum_thresholds:
+      quality: "> 0.7"
+      safety: "> 0.9"   # High bar for safety
+      speed: "> 0.5"
+    tiebreaker: "Prefer higher safety score"
+
+# Best-of-N Selection Process
+selection_process:
+  candidate_evaluation:
+    parallel_execution: "Run all variants on same test set"
+    independent_scoring: "Score each variant independently"
+    result_comparison: "Compare outputs for consistency"
+    
+  champion_criteria:
+    primary: "Highest composite score meeting thresholds"
+    secondary: "Most consistent results across test cases"
+    tertiary: "Best performance on critical fixtures"
+    
+  runner_up_preservation:
+    storage: "Save non-champion variants as profiles"
+    activation_criteria: "Switch champion if performance degrades"
+    specialized_deployment: "Use variants for specific contexts"
+
+# Reporting Framework
+reporting:
+  agent_scorecards:
+    overall_score: number
+    quality_breakdown:
+      precision: number
+      recall: number 
+      f1_score: number
+    safety_compliance: boolean
+    speed_percentiles: [p50, p95, p99]
+    
+  comparative_analysis:
+    best_performer_per_category: string
+    score_distribution: histogram
+    improvement_recommendations: array[string]
+    
+  trend_analysis:
+    performance_over_time: time_series
+    degradation_alerts: array[alert]
+    optimization_opportunities: array[string]
+
+# Configuration Validation
+config_validation:
+  schema_compliance: "All contracts must follow v1.0 schema"
+  tool_restrictions: "Only Read, Grep, Task(ctest) allowed"
+  output_determinism: "Repeatable results for same input"
+  human_reviewability: "Configs must be understandable by humans"
+  
+# Anti-Hallucination Measures  
+anti_hallucination:
+  evidence_requirements:
+    file_existence: "Must verify files exist before analysis"
+    pattern_matching: "Must find actual pattern matches"
+    uncertainty_admission: "Must state when evidence insufficient"
+    
+  forbidden_behaviors:
+    assumption_making: "No assumptions about code behavior"
+    result_guessing: "No guessing when evidence unclear"
+    overconfident_reporting: "Must include confidence levels"
+    
+  required_guardrails:
+    uncertainty_status: "{status: 'uncertain', reason: '...'}"
+    confidence_scoring: "Numerical confidence in findings"
+    evidence_citation: "Reference specific files/lines/patterns"

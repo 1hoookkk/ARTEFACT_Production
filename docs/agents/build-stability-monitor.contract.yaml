@@ -1,0 +1,299 @@
+# Build Stability Monitor Contract v1.0
+# Compilation predictor and build system validator for SpectralCanvas Pro
+
+name: build-stability-monitor
+version: "1.0.0"
+model: analysis-only
+color: orange
+priority: high
+
+description: >
+  Predicts compilation failures through dependency analysis, detects Windows macro pollution,
+  validates CMake configuration, and ensures cross-platform build stability.
+  Focus on SpectralCanvas Pro's JUCE integration and header dependency management.
+
+# Best-of-N Design Options
+design_options:
+  champion: cross_platform_validator
+  alternatives:
+    - header_dependency_analyzer
+    - cmake_configuration_validator
+    
+  header_dependency_analyzer:
+    approach: "Deep #include dependency graph analysis"
+    strength: "Catches circular dependencies and missing headers"
+    coverage: "C++ header system"
+    speed: fast
+    tradeoffs: "Focused on headers but misses CMake/link issues"
+    
+  cmake_configuration_validator:
+    approach: "CMake target validation and link order checking"
+    strength: "Catches build system configuration errors"
+    coverage: "CMake configuration"
+    speed: fast
+    tradeoffs: "Build-focused but misses header pollution"
+    
+  cross_platform_validator:
+    approach: "Comprehensive Windows/Mac/Linux compatibility checking"
+    strength: "Prevents platform-specific build breaks"
+    coverage: "Headers + CMake + platform differences"
+    speed: medium
+    tradeoffs: "Comprehensive but more complex analysis"
+
+# Build System Analysis
+cmake_validation:
+  target_structure:
+    required_targets:
+      - "ARTEFACT"  # Main plugin
+      - "SpectralCoreTests"
+      - "RenderSineFFTTest" 
+      - "TestRTSafety"
+      - "TestPaintProducesAudio"
+    expected_formats:
+      - "VST3"
+      - "Standalone"
+      
+  juce_modules:
+    required_modules:
+      - "juce::juce_audio_basics"
+      - "juce::juce_audio_processors" 
+      - "juce::juce_dsp"
+      - "juce::juce_gui_basics"
+      - "juce::juce_graphics"
+    link_order_sensitive: true
+    
+  compile_definitions:
+    expected_definitions:
+      - "JUCE_WEB_BROWSER=0"
+      - "JUCE_USE_CURL=0"
+      - "JUCE_VST3_CAN_REPLACE_VST2=0"
+    windows_specific:
+      - "NOMINMAX"  # Prevent min/max macro pollution
+      - "WIN32_LEAN_AND_MEAN"
+
+# Header Pollution Detection
+header_risks:
+  windows_headers:
+    risky_includes:
+      - "windows.h"
+      - "minmax.h"
+      - "windef.h"
+    pollution_patterns:
+      - "#define max"
+      - "#define min"
+      - "#define NOMINMAX"  # Should be set via CMake
+    severity: high
+    
+  macro_conflicts:
+    dangerous_macros:
+      - "max\\s*\\("  # Conflicts with std::max
+      - "min\\s*\\("  # Conflicts with std::min
+      - "RGB\\s*\\("  # Conflicts with color processing
+    mitigation_required: true
+    
+  include_order:
+    juce_first: "JUCE headers should come before system headers"
+    system_last: "System headers (windows.h) should be last"
+    std_before_juce: "Standard library before JUCE is okay"
+
+# Dependency Analysis
+dependency_scanning:
+  circular_dependencies:
+    check_paths:
+      - "Source/Core/**"
+      - "Source/GUI/**"
+      - "Source/Spectral/**"
+    severity: critical
+    
+  missing_includes:
+    common_issues:
+      - "Forward declarations without includes"
+      - "Template instantiation without headers"
+      - "JUCE module headers missing"
+    auto_suggest: true
+    
+  unnecessary_includes:
+    check_for:
+      - "Headers included but not used"
+      - "Transitive dependencies"
+      - "Legacy includes from refactoring"
+    performance_impact: medium
+
+# Platform-Specific Checks
+platform_compatibility:
+  windows:
+    issues:
+      - "Case-sensitive path problems"
+      - "min/max macro pollution"
+      - "Windows.h include order"
+    cmake_flags:
+      - "WIN32_LEAN_AND_MEAN"
+      - "NOMINMAX"
+      
+  macos:
+    issues:
+      - "Objective-C++ mixing"
+      - "Framework linking order"
+      - "Xcode project generation"
+    frameworks:
+      - "AudioUnit"
+      - "CoreAudio"
+      
+  linux:  
+    issues:
+      - "ALSA/JACK dependencies"
+      - "X11 dependencies"
+      - "pkg-config requirements"
+
+# Test Infrastructure Validation
+test_validation:
+  expected_tests:
+    core_tests:
+      - "RenderSineFFTTest"
+      - "SpectralCoreTests" 
+      - "TestRTSafety"
+      - "TestPaintProducesAudio"
+    integration_tests:
+      - "TestUIIntegration"
+      - "TestCanvasToSpectral_Preconditions"
+      
+  ctest_configuration:
+    required_properties:
+      - "NAME property set"
+      - "COMMAND pointing to executable"
+      - "Correct build configuration"
+    build_dependencies:
+      - "Tests depend on main targets"
+      - "Test executables use correct libraries"
+
+# Trigger Conditions
+triggers:
+  diff_path_matches:
+    - "CMakeLists.txt"
+    - "**/*.h"
+    - "**/*.hpp"
+    - "**/*.cpp"
+    - "External/**"
+  diff_contains:
+    - "#include"
+    - "target_link_libraries"
+    - "add_executable"
+    - "add_test"
+    - "juce_add_plugin"
+    - "#define"
+    - "#undef"
+
+# Output Specification
+output:
+  format: json
+  schema:
+    warnings:
+      - type: enum[header_pollution, circular_dependency, missing_include, cmake_config, platform_specific]
+        severity: enum[critical, high, medium, low]
+        message: string
+        file: string
+        line: integer
+        suggestion: string
+        platform_affected: array[string]
+        
+    suggestions:
+      - action: string
+        rationale: string
+        files_affected: array[string]
+        priority: enum[immediate, high, medium, low]
+        
+    build_health:
+      overall_score: number  # 0.0 to 1.0
+      risk_factors:
+        - factor: string
+          impact: enum[critical, high, medium, low]
+      stability_trend: enum[improving, stable, degrading]
+      
+    platform_status:
+      windows: enum[stable, warning, broken]
+      macos: enum[stable, warning, broken]
+      linux: enum[stable, warning, broken]
+
+# Analysis Patterns
+scanning_patterns:
+  header_analysis:
+    include_extraction: "grep -n '#include' **/*.{h,hpp,cpp}"
+    dependency_mapping: "Build include dependency graph"
+    circular_detection: "Detect cycles in dependency graph"
+    
+  cmake_parsing:
+    target_extraction: "Parse add_executable/add_library calls"
+    link_validation: "Verify target_link_libraries correctness"
+    test_discovery: "Find and validate add_test calls"
+    
+  macro_detection:
+    windows_pollution: "Search for min/max macro definitions"
+    juce_conflicts: "Check for JUCE macro conflicts"
+    definition_consistency: "Validate compile definitions"
+
+# Test Fixtures
+test_fixtures:
+  - name: "windows_minmax_pollution"
+    files:
+      - path: "Source/Test.h"
+        content: |
+          #include <windows.h>  // This will define min/max
+          #include <algorithm>
+          void test() {
+              auto result = std::max(1, 2);  // WILL FAIL
+          }
+    expected_warnings: ["min/max macro conflict"]
+    
+  - name: "circular_dependency"
+    files:
+      - path: "A.h"
+        content: '#include "B.h"'
+      - path: "B.h" 
+        content: '#include "A.h"'
+    expected_warnings: ["circular dependency"]
+    
+  - name: "missing_juce_module"
+    files:
+      - path: "CMakeLists.txt"
+        content: |
+          target_link_libraries(ARTEFACT PRIVATE
+              juce::juce_core
+              # Missing juce::juce_audio_processors
+          )
+    expected_warnings: ["missing JUCE module"]
+
+# Posthooks
+posthooks:
+  - "Task(ctest --test-dir build -N -C RelWithDebInfo)"  # List tests without running
+  - "Task(cmake --build build --config RelWithDebInfo --target ARTEFACT --dry-run)"
+
+# Performance KPIs
+kpis:
+  prediction_precision: "> 0.80"  # Correct failure predictions / total predictions
+  false_alarm_rate: "< 0.25"      # Incorrect warnings / total warnings
+  analysis_time_sec: "< 45"       # Time for full dependency analysis
+  coverage_percentage: "> 0.90"   # Files analyzed / total files
+
+# Context Knowledge
+project_context:
+  juce_version: "7.0.12"
+  cmake_version: "3.22+"
+  cpp_standard: "17"
+  platforms: ["Windows", "macOS", "Linux"]
+  
+  known_issues:
+    - "std::max conflicts with Windows min/max macros"
+    - "JUCE module link order affects compilation"
+    - "Missing Config.h/CrashToggles.h caused past failures"
+    
+  critical_files:
+    - "CMakeLists.txt: Main build configuration"
+    - "Source/Core/PluginProcessor.h: Core JUCE integration"
+    - "Source/Core/Config.h: Project configuration"
+    - "External/JUCE/: Framework dependencies"
+    
+  build_patterns:
+    - "JUCE plugin uses juce_add_plugin macro"
+    - "Tests use standard add_executable + add_test"
+    - "All targets link against JUCE modules"
+    - "VST3 and Standalone formats required"

@@ -1,0 +1,64 @@
+#pragma once
+#include <JuceHeader.h>
+#include "../Core/PaintQueue.h"
+#include "../ui/Tokens.h"
+
+/*
+  PaintCanvasComponent
+  - Publishes PaintGesture into paintQueue_ (UI thread only)
+  - Supports: left/drag paint, right/drag erase, shift constrain, double-click dot, long-press inspector.
+  - Uses juce::Timer to detect long-press (UI thread)
+*/
+
+class PaintCanvasComponent : public juce::Component,
+                             public juce::MouseListener,
+                             private juce::Timer
+{
+public:
+    PaintCanvasComponent(PaintQueue<1024>& q, ui::Tokens tokens);
+    ~PaintCanvasComponent() override;
+
+    void paint(juce::Graphics& g) override;
+    void resized() override;
+
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseDrag(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
+    void mouseDoubleClick(const juce::MouseEvent& e) override;
+
+    void setCanvasResolution(int w, int h);
+    
+    // Configuration from UI policy
+    int longPressThresholdMs = 400;
+
+    // inspector callback
+    std::function<void(juce::Point<int>)> onLongPressInspector;
+
+private:
+    // Timer callback for long-press detection
+    void timerCallback() override;
+
+    // helper
+    juce::Point<float> constrainPointToShift(const juce::Point<float>& start,
+                                             const juce::Point<float>& current,
+                                             const juce::ModifierKeys& mods) const;
+
+    PaintQueue<1024>& paintQueue_;
+    ui::Tokens tokens_;
+
+    int canvasW = 128, canvasH = 128;
+    float pixelSize = 1.0f;
+
+    // UI state
+    bool pointerDown = false;
+    juce::Point<int> lastMousePos{};
+    juce::uint64 longPressStartMs = 0;
+    bool longPressFired = false;
+    int longPressSlopPx = 6;
+
+    // stroke id for persistency (UI-only)
+    uint32_t currentStrokeId = 0;
+    uint32_t nextStrokeId = 1;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PaintCanvasComponent)
+};

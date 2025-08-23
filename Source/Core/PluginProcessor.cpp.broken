@@ -1,0 +1,1038 @@
+﻿// Source/PluginProcessor.cpp
+#include "PluginProcessor.h"
+#if SC_MVP_UI
+#include "GUI/PluginEditorMVP.h"
+#else
+#include "GUI/PluginEditor.h"
+#endif
+#include "Core/CrashToggles.h"
+#include "Core/Config.h"
+#include <fstream>
+#include "Util/Determinism.h"
+
+// Optional: allow override via env or CMake -DSC_STAGE_MASK=...
+static unsigned readStageMaskEnv(){
+  #if JUCE_WINDOWS
+  if (auto* v = std::getenv("SC_STAGE_MASK")) return (unsigned) std::strtoul(v, nullptr, 0);
+  #endif
+  return 0xFFFFFFFFu;
+}
+
+//==============================================================================
+// Constructor and Destructor
+
+ARTEFACTAudioProcessor::ARTEFACTAudioProcessor()
+    : AudioProcessor(BusesProperties()
+#if ! JucePlugin_IsMidiEffect
+    #if ! JucePlugin_IsSynth
+                     .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+    #endif
+                     .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+#endif
+                     ),
+      apvts(*this, nullptr, "Parameters", createParameterLayout())
+{
+    // RT-SAFE: Removed file I/O from constructor to prevent heap allocations
+    
+    // CRASH PREVENTION: NO parameter listener registration in constructor
+    // This eliminates the risk of static initialization crashes from parameterChanged callbacks
+    // Parameter listeners will be registered in prepareToPlay() instead
+    
+    // Initialize crash bisection mask from environment
+    debugStageMask.store(readStageMaskEnv(), std::memory_order_relaxed);
+}
+
+ARTEFACTAudioProcessor::~ARTEFACTAudioProcessor()
+{
+    // Remove all parameter listeners
+    const auto& params = getParameters();
+    for (auto* param : params) {
+        if (auto* paramWithID = dynamic_cast<juce::AudioProcessorParameterWithID*>(param))
+            apvts.removeParameterListener(paramWithID->paramID, this);
+    }
+}
+
+//==============================================================================
+// Audio Processing Lifecycle
+
+void ARTEFACTAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+{
+    // RT-SAFE: Removed file I/O from prepareToPlay to prevent heap allocations
+    
+    // ENGINE GUARD: Mark engines as prepared FIRST to enable parameter callbacks
+    // This must happen before any parameter listener registration
+    enginePrepared.store(true, std::memory_order_release);
+    
+    // MINIMAL SETUP for crash isolation - keep light for now
+    currentSampleRate = sampleRate;
+    
+    // Forward declaration for deterministic seed function
+    auto readDeterministicSeedEnv = []() -> uint32_t {
+#if JUCE_WINDOWS
+        if (auto* v = std::getenv("SC_DETERMINISTIC_SEED")) return (uint32_t) std::strtoul(v, nullptr, 0);
+#endif
+        return 0u;
+    };
+    
+    // Pre-allocate RT-safe buffers to prevent heap allocations in processBlock
+    maskingBuffer.setSize(2, samplesPerBlock, false, false, true);
+    paintBuffer.setSize(2, samplesPerBlock, false, false, true);
+    
+    // Prepare all audio engines (CRITICAL: Missing prepareToPlay calls were causing segfault)
+    paintEngine.prepareToPlay(sampleRate, samplesPerBlock);
+    forgeProcessor.prepareToPlay(sampleRate, samplesPerBlock);
+    sampleMaskingEngine.prepareToPlay(sampleRate, samplesPerBlock, 2);
+    spectralSynthEngine.prepareToPlay(sampleRate, samplesPerBlock, 2);
+    audioRecorder.prepareToPlay(sampleRate, samplesPerBlock, 2);
+    
+    // Prepare TapeSpeed processor
+    tapeSpeed.prepareToPlay(sampleRate, samplesPerBlock);
+    
+    // Prepare StereoWidth processor
+    stereoWidth.prepareToPlay(sampleRate, samplesPerBlock);
+    
+    // Initialize magic parameter smoothing for 150ms ramp
+    magicRampRate = static_cast<float>(sampleRate * 0.15);  // 150ms in samples
+
+    // CONSTANT LATENCY: compute and publish plugin latency from parameter
+    if (auto* latencyParam = apvts.getRawParameterValue("latencyMs"))
+        const float latencyMs = *latencyParam;
+        latencyMsAtomic.store(latencyMs, std::memory_order_relaxed);
+        const int latencySamples = juce::jmax(0, (int) std::lround((latencyMs / 1000.0f) * (float) sampleRate));
+        currentLatencySamples = latencySamples;
+        setLatencySamples(currentLatencySamples);
+        requestedLatencySamples.store(-1, std::memory_order_release);
+    // QUALITY MODE: snapshot initial quality mode and apply oversampling mapping
+    if (auto* qParam = apvts.getRawParameterValue("qualityMode"))
+        int q = (int) *qParam;
+        qualityModeAtomic.store(q, std::memory_order_relaxed);
+        lastAppliedQualityMode = -1; // force apply on first processBlock
+        qualityDirty.store(true, std::memory_order_release);
+    // DETERMINISM: Initialize flag and (optional) seed from env var SC_DETERMINISTIC_SEED
+    if (auto* detParam = apvts.getRawParameterValue("deterministicMode"))
+        const bool det = *detParam > 0.5f;
+        SpectralCanvas::Determinism::SetEnabled(det);
+        if (auto seed = readDeterministicSeedEnv())
+            SpectralCanvas::Determinism::SetSeed(seed);
+    // CRASH PREVENTION: Register parameter listeners HERE instead of constructor
+    // This prevents static initialization crashes by deferring listener registration
+    // until after all static objects are initialized
+    if (!parametersListenersRegistered.load(std::memory_order_acquire))
+        // Master section (critical parameters only)
+        apvts.addParameterListener("masterGain", this);
+        apvts.addParameterListener("paintActive", this);
+        apvts.addParameterListener("processingMode", this);
+        
+        // Paint engine section
+        apvts.addParameterListener("brushSize", this);
+        apvts.addParameterListener("pressureSensitivity", this);
+        apvts.addParameterListener("colorIntensity", this);
+        apvts.addParameterListener("frequencyRange", this);
+        apvts.addParameterListener("paintDecay", this);
+        apvts.addParameterListener("paintMode", this);
+        apvts.addParameterListener("spatialWidth", this);
+        apvts.addParameterListener("quantizeToKey", this);
+        
+        // Synthesis engine section
+        apvts.addParameterListener("oscillatorCount", this);
+        apvts.addParameterListener("spectralMode", this);
+        apvts.addParameterListener("topNBands", this);
+        apvts.addParameterListener("filterCutoff", this);
+        apvts.addParameterListener("filterResonance", this);
+        apvts.addParameterListener("spectralMorph", this);
+        apvts.addParameterListener("harmonicContent", this);
+        
+        // Effects section
+        apvts.addParameterListener("reverbAmount", this);
+        apvts.addParameterListener("delayAmount", this);
+        apvts.addParameterListener("distortionAmount", this);
+        apvts.addParameterListener("chorusAmount", this);
+        
+        // Performance section
+        apvts.addParameterListener("cpuLimit", this);
+        apvts.addParameterListener("qualityMode", this);
+        apvts.addParameterListener("latencyMs", this);
+        apvts.addParameterListener("adaptivePerformance", this);
+        apvts.addParameterListener("deterministicMode", this);
+        
+        // Layer management section
+        apvts.addParameterListener("activeLayer", this);
+        apvts.addParameterListener("layerOpacity", this);
+        apvts.addParameterListener("layerBlendMode", this);
+        
+        // Mask snapshot section
+        apvts.addParameterListener("maskBlend", this);
+        apvts.addParameterListener("maskStrength", this);
+        apvts.addParameterListener("featherTime", this);
+        apvts.addParameterListener("featherFreq", this);
+        apvts.addParameterListener("threshold", this);
+        apvts.addParameterListener("protectHarmonics", this);
+        
+        // Mark as registered to prevent duplicate registrations
+        parametersListenersRegistered.store(true, std::memory_order_release);
+    }
+    // Skip heavy engine preparation for this diagnostic phase
+    // (Will be restored after we identify crash location)
+}
+
+void ARTEFACTAudioProcessor::releaseResources()
+{
+    // ENGINE GUARD: Mark engines as not prepared to prevent parameter callbacks during shutdown
+    enginePrepared.store(false, std::memory_order_release);
+    
+    paintEngine.releaseResources();
+    sampleMaskingEngine.releaseResources();
+    spectralSynthEngine.releaseResources();
+    audioRecorder.releaseResources();
+    // Note: ForgeProcessor doesn't have releaseResources() method yet
+//==============================================================================
+// Parameter Management
+
+juce::AudioProcessorValueTreeState::ParameterLayout ARTEFACTAudioProcessor::createParameterLayout()
+    using namespace SpectralCanvas::Config;
+    
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> parameters;
+    
+    // HIERARCHICAL SAFETY CHECK: Reduce parameter complexity in safe/minimal modes
+    const bool isComplexParametersEnabled = IsFullModeActive() || 
+                                          (IsSafeModeActive() && EngineFeatures::IsSpectralEngineEnabled());
+    
+    // TEMP BYPASS: DBG("PluginProcessor: Creating parameter layout - ComplexParams=" << 
+    //    (isComplexParametersEnabled ? "ON" : "OFF") << " Mode=" <<
+    //    (IsFullModeActive() ? "Full" : IsSafeModeActive() ? "Safe" : IsMinimalModeActive() ? "Minimal" : "Debug"));
+    
+    // MINIMAL MODE: Only essential parameters for VST3 compliance
+    if (IsMinimalModeActive()) {
+        // TEMP BYPASS: DBG("PluginProcessor: Minimal parameter layout - only master controls");
+        
+        parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+            "masterGain", "Master Gain", 
+            juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.5f));
+        
+        return { parameters.begin(), parameters.end() };
+    //==============================================================================
+    // MASTER SECTION (3 parameters)
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "masterGain", "Master Gain", 
+        juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 0.7f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 2) + " x"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "paintActive", "Paint Active", false));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "processingMode", "Processing Mode", 
+        juce::StringArray{"Forge", "Canvas", "Hybrid"}, 1));
+    
+    //==============================================================================
+    // PAINT ENGINE SECTION (8 parameters) - Only in safe+ modes
+    
+    if (isComplexParametersEnabled && UIFeatures::IsCanvasRenderingEnabled()) {
+        DBG("PluginProcessor: Adding paint engine parameters");
+        
+        parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "brushSize", "Brush Size", 
+        juce::NormalisableRange<float>(0.1f, 10.0f, 0.1f), 1.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 1) + "x"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "pressureSensitivity", "Pressure Sensitivity", 
+        juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "colorIntensity", "Color Intensity", 
+        juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "frequencyRange", "Frequency Range", 
+        juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.3f), 10000.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value)) + " Hz"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "paintDecay", "Paint Decay", 
+        juce::NormalisableRange<float>(0.1f, 10.0f, 0.1f, 0.5f), 1.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 1) + "s"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "paintMode", "Paint Mode", 
+        juce::StringArray{"Additive", "Subtractive", "Multiply", "Ring Mod"}, 0));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "spatialWidth", "Spatial Width", 
+        juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f));
+    
+        parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+            "quantizeToKey", "Quantize to Key", false));
+    //==============================================================================
+    // SYNTHESIS ENGINE SECTION (6 parameters) - Only if engines enabled
+    
+    if (EngineFeatures::IsSpectralEngineEnabled()) {
+        DBG("PluginProcessor: Adding synthesis engine parameters");
+        
+        parameters.push_back(std::make_unique<juce::AudioParameterInt>(
+        "oscillatorCount", "Oscillator Count", 
+        1, 1024, 256,
+        juce::String(), 
+        [](int value, int) { return juce::String(value) + " oscs"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "spectralMode", "Spectral Mode", 
+        juce::StringArray{"Pure Synthesis", "Sample + Synthesis", "Spectral Processing"}, 0));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "filterCutoff", "Filter Cutoff", 
+        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 1000.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value)) + " Hz"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "filterResonance", "Filter Resonance", 
+        juce::NormalisableRange<float>(0.1f, 20.0f, 0.1f, 0.4f), 1.0f));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "spectralMorph", "Spectral Morph", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "harmonicContent", "Harmonic Content", 
+        juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f));
+    
+        parameters.push_back(std::make_unique<juce::AudioParameterInt>(
+            "topNBands", "Top-N Bands", 
+            1, 1024, 128,
+            juce::String(), 
+            [](int value, int) { return juce::String(value) + " bands"; }));
+    //==============================================================================
+    // EFFECTS SECTION (4 parameters) - Only if effects enabled
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "reverbAmount", "Reverb Amount", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.2f));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "delayAmount", "Delay Amount", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "distortionAmount", "Distortion Amount", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "chorusAmount", "Chorus Amount", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    
+    //==============================================================================
+    // PERFORMANCE SECTION (4 parameters)
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "cpuLimit", "CPU Limit", 
+        juce::NormalisableRange<float>(10.0f, 100.0f, 1.0f), 80.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value)) + "%"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "qualityMode", "Quality Mode", 
+        juce::StringArray{"Performance", "Balanced", "Quality", "Ultra"}, 1));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "deterministicMode", "Deterministic Renders", false));
+
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "latencyMs", "Target Latency", 
+        juce::NormalisableRange<float>(1.0f, 50.0f, 0.1f), 5.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 1) + "ms"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "adaptivePerformance", "Adaptive Performance", true));
+    
+    //==============================================================================
+    // LAYER MANAGEMENT SECTION (3 parameters)
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterInt>(
+        "activeLayer", "Active Layer", 
+        1, 16, 1,
+        juce::String(), 
+        [](int value, int) { return "Layer " + juce::String(value); }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "layerOpacity", "Layer Opacity", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value * 100)) + "%"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "layerBlendMode", "Layer Blend Mode", 
+        juce::StringArray{"Normal", "Multiply", "Screen", "Overlay", "Soft Light"}, 0));
+    
+    //==============================================================================
+    // MASK SNAPSHOT SECTION (6 parameters)
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "maskBlend", "Mask Blend", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value * 100)) + "%"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "maskStrength", "Mask Strength", 
+        juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 2) + "x"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "featherTime", "Feather Time", 
+        juce::NormalisableRange<float>(0.001f, 0.1f, 0.001f, 0.5f), 0.01f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value * 1000.0f, 1) + "ms"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "featherFreq", "Feather Frequency", 
+        juce::NormalisableRange<float>(10.0f, 1000.0f, 1.0f, 0.3f), 100.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value)) + " Hz"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "threshold", "Mask Threshold", 
+        juce::NormalisableRange<float>(-60.0f, 0.0f, 0.1f), -30.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 1) + " dB"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "protectHarmonics", "Protect Harmonics", true));
+    
+    return { parameters.begin(), parameters.end() };
+}
+
+//==============================================================================
+// Editor factory
+juce::AudioProcessorEditor* ARTEFACTAudioProcessor::createEditor()
+{
+#if SC_MVP_UI
+    return new MVPPluginEditor(*this);
+#else
+    return new ARTEFACTAudioProcessorEditor(*this);
+#endif
+}
+
+//==============================================================================
+// Main audio processing
+void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    juce::ignoreUnused(midi);
+
+    juce::ScopedNoDenormals noDenormals;
+
+    // Apply pending latency update in a safe point (using new RT-safe system)
+    if (int pending = requestedLatencySamples.exchange(-1, std::memory_order_acq_rel);
+        pending >= 0 && pending != currentLatencySamples)
+        currentLatencySamples = pending;
+        setLatencySamples(currentLatencySamples);
+    // Legacy latency dirty flag support
+    if (latencyDirty.load(std::memory_order_acquire))
+        const float ms = latencyMsAtomic.load(std::memory_order_relaxed);
+        const int newLatency = juce::jmax(0, (int) std::lround((ms / 1000.0f) * (float) currentSampleRate));
+        requestLatencySamples(newLatency);
+        latencyDirty.store(false, std::memory_order_release);
+    if (audioProcessingPaused)
+        buffer.clear();
+        return;
+    // Defer heavy operations if not prepared
+    if (!enginePrepared.load(std::memory_order_acquire))
+        buffer.clear();
+        return;
+    // Apply pending quality mode mapping to oversampling if needed
+    if (qualityDirty.load(std::memory_order_acquire))
+        const int q = qualityModeAtomic.load(std::memory_order_relaxed);
+        if (q != lastAppliedQualityMode)
+            // Map quality index -> tube oversampling
+            int os = 1; // Performance
+            if (q == 1) os = 2;        // Balanced
+            else if (q >= 2) os = 4;   // Quality/Ultra
+            spectralSynthEngine.setQualityModeIndex(q, os);
+            lastAppliedQualityMode = q;
+        qualityDirty.store(false, std::memory_order_release);
+    // Snapshot master gain atomically
+    const float masterGain = masterGainAtomic.load(std::memory_order_relaxed);
+
+    // Optional: processing mode snapshot (currently unused)
+    const int modeIndex = processingModeAtomic.load(std::memory_order_relaxed);
+    juce::ignoreUnused(modeIndex);
+
+    // Process core engines in a fixed order. Keep it RT-safe and allocation-free
+    // 1) Sample masking path (paint → sample)
+    sampleMaskingEngine.processBlock(buffer);
+
+    // 2) Spectral synthesis augmentation (if enabled, additive on top)
+    // For now, call and let engine decide based on its internal flags
+    spectralSynthEngine.processBlock(buffer);
+
+    // 3) Utility processors (tape speed, stereo width)
+    tapeSpeed.processBlock(buffer);
+    stereoWidth.processBlock(buffer);
+
+    // 4) Apply master gain at the end
+    if (std::abs(masterGain - 1.0f) > 0.0001f)
+        buffer.applyGain(masterGain);
+}
+
+void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, float newValue)
+{
+    // ENGINE GUARD: Prevent parameter callbacks before prepareToPlay completes
+    // This prevents crashes when host restores state before engine initialization
+    if (!enginePrepared.load(std::memory_order_acquire)) return;
+    
+    // RT-SAFE PARAMETER HANDLING: ONLY atomic operations - no engine calls, no DBG, no allocations
+    // This prevents static initialization crashes by eliminating ALL risky operations from parameter listeners
+    
+    if (parameterID == "masterGain")
+        masterGainAtomic.store(newValue, std::memory_order_relaxed);
+        masterGainDirty.store(true, std::memory_order_relaxed);
+    else if (parameterID == "paintActive")
+        paintActiveAtomic.store(newValue > 0.5f, std::memory_order_relaxed);
+        paintActiveDirty.store(true, std::memory_order_relaxed);
+    else if (parameterID == "processingMode")
+        int modeIndex = static_cast<int>(newValue);
+        processingModeAtomic.store(modeIndex, std::memory_order_relaxed);
+        processingModeDirty.store(true, std::memory_order_relaxed);
+    else if (parameterID == "latencyMs")
+        latencyMsAtomic.store(newValue, std::memory_order_relaxed);
+        latencyDirty.store(true, std::memory_order_release);
+        // Defer setLatencySamples() to a safe point (e.g., start of processBlock) to avoid any host timing issues
+    else if (parameterID == "qualityMode")
+        const int q = static_cast<int>(newValue);
+        qualityModeAtomic.store(q, std::memory_order_relaxed);
+        qualityDirty.store(true, std::memory_order_release);
+    else if (parameterID == "deterministicMode")
+        const bool det = newValue > 0.5f;
+        SpectralCanvas::Determinism::SetEnabled(det);
+    // ALL OTHER PARAMETERS: Store in atomic cache for deferred processing in prepareToPlay/processBlock
+    // NO DBG calls, NO engine method calls, NO allocations - pure atomic operations only
+    
+    // Effects parameters (store for deferred processing)
+    // Mask/Spectral parameters (store for deferred processing) 
+    // Performance parameters (store for deferred processing)
+    // Layer management parameters (store for deferred processing)
+    
+    // DESIGN: Additional parameter atomics can be added here as needed during development
+    // Each follows the pattern: someParamAtomic.store(newValue, std::memory_order_relaxed);
+// Duplicate createEditor() removed - using the one with SC_MVP_UI flag above
+
+//==============================================================================
+// Bus Layout Support
+
+bool ARTEFACTAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+    // RT-SAFE: Removed file I/O from bus layout validation
+    
+#if JucePlugin_IsMidiEffect
+    juce::ignoreUnused(layouts);
+    return true;
+#else
+    // Only mono/stereo outputs supported - explicit validation
+    const auto outputChannels = layouts.getMainOutputChannelSet();
+    if (outputChannels != juce::AudioChannelSet::mono() && 
+        outputChannels != juce::AudioChannelSet::stereo())
+        return false; // Reject unsupported layouts
+#if ! JucePlugin_IsSynth
+    // For non-synth plugins, input and output must match
+    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+        return false;
+#endif
+
+    return true;
+#endif
+//==============================================================================
+// State Management
+
+void ARTEFACTAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    // Save plugin state
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
+}
+
+void ARTEFACTAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
+{
+    // Restore plugin state
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+    if (xmlState.get() != nullptr)
+        if (xmlState->hasTagName(apvts.state.getType()))
+            apvts.replaceState(juce::ValueTree::fromXml(*xmlState));
+//==============================================================================
+// Command Queue Management
+
+bool ARTEFACTAudioProcessor::pushCommandToQueue(const Command& newCommand)
+    return commandQueue.push(newCommand);
+void ARTEFACTAudioProcessor::processCommands()
+    // Process commands with a time limit to avoid blocking the audio thread
+    // We allow up to 0.5ms for command processing (conservative limit)
+    const double maxProcessingTimeMs = 0.5;
+    
+    commandQueue.processWithTimeLimit([this](const Command& cmd) {
+        processCommand(cmd);
+    }, maxProcessingTimeMs);
+void ARTEFACTAudioProcessor::processCommand(const Command& cmd)
+    // Route command based on type
+    if (cmd.isForgeCommand())
+        processForgeCommand(cmd);
+    else if (cmd.isSampleMaskingCommand())
+        processSampleMaskingCommand(cmd);
+    else if (cmd.isPaintCommand())
+        processPaintCommand(cmd);
+    else if (cmd.isRecordingCommand())
+        processRecordingCommand(cmd);
+void ARTEFACTAudioProcessor::processForgeCommand(const Command& cmd)
+    switch (cmd.getForgeCommandID())
+    case ForgeCommandID::StartPlayback:
+        forgeProcessor.getVoice(cmd.intParam).start();
+        break;
+    case ForgeCommandID::StopPlayback:
+        forgeProcessor.getVoice(cmd.intParam).stop();
+        break;
+    case ForgeCommandID::LoadSample:
+            // RT-SAFE: Commented out file I/O in audio thread - needs background thread
+            // juce::File sampleFile(cmd.getStringParam());
+            // forgeProcessor.loadSampleIntoSlot(cmd.intParam, sampleFile);
+            // TODO(RT-safety): Move to background thread with async completion
+            
+            // AUDIO FIX: Switch to Forge mode for sample playback
+            currentMode = ProcessingMode::Forge;
+        break;
+    case ForgeCommandID::SetPitch:
+        forgeProcessor.getVoice(cmd.intParam).setPitch(cmd.floatParam);
+        break;
+    case ForgeCommandID::SetSpeed:
+        forgeProcessor.getVoice(cmd.intParam).setSpeed(cmd.floatParam);
+        break;
+    case ForgeCommandID::SetVolume:
+        forgeProcessor.getVoice(cmd.intParam).setVolume(cmd.floatParam);
+        break;
+    case ForgeCommandID::SetDrive:
+        forgeProcessor.getVoice(cmd.intParam).setDrive(cmd.floatParam);
+        break;
+    case ForgeCommandID::SetCrush:
+        forgeProcessor.getVoice(cmd.intParam).setCrush(cmd.floatParam);
+        break;
+    case ForgeCommandID::SetSyncMode:
+        forgeProcessor.getVoice(cmd.intParam).setSyncMode(cmd.boolParam);
+        break;
+    default:
+        break;
+void ARTEFACTAudioProcessor::processSampleMaskingCommand(const Command& cmd)
+    switch (cmd.getSampleMaskingCommandID())
+    case SampleMaskingCommandID::LoadSample:
+            // RT-SAFE: Commented out file I/O in audio thread - needs background thread
+            // juce::File sampleFile(cmd.stringParam);
+            // auto result = sampleMaskingEngine.loadSample(sampleFile);
+            // TODO(RT-safety): Move to background thread with async completion
+            // if (result.success)
+                // RT-SAFE: Removed debug logging from audio thread
+                
+                // NEW: Auto-detect tempo and enable sync for beatmakers
+                auto tempoInfo = sampleMaskingEngine.detectSampleTempo();
+                if (tempoInfo.confidence > 0.5f)
+                    // RT-SAFE: Removed debug logging from audio thread
+                    sampleMaskingEngine.enableTempoSync(true);
+                // NEW: Auto-start playback for immediate feedback (beatmaker friendly!)
+                sampleMaskingEngine.startPlayback();
+                // RT-SAFE: Removed debug logging from audio thread
+            // else removed - orphaned from commented if condition above
+        break;
+    case SampleMaskingCommandID::ClearSample:
+        sampleMaskingEngine.clearSample();
+        break;
+    case SampleMaskingCommandID::StartPlayback:
+        sampleMaskingEngine.startPlayback();
+        break;
+    case SampleMaskingCommandID::StopPlayback:
+        sampleMaskingEngine.stopPlayback();
+        break;
+    case SampleMaskingCommandID::PausePlayback:
+        sampleMaskingEngine.pausePlayback();
+        break;
+    case SampleMaskingCommandID::SetLooping:
+        sampleMaskingEngine.setLooping(cmd.boolParam);
+        break;
+    case SampleMaskingCommandID::SetPlaybackSpeed:
+        sampleMaskingEngine.setPlaybackSpeed(cmd.floatParam);
+        break;
+    case SampleMaskingCommandID::SetPlaybackPosition:
+        sampleMaskingEngine.setPlaybackPosition(cmd.floatParam);
+        break;
+    case SampleMaskingCommandID::CreatePaintMask:
+            auto mode = static_cast<SampleMaskingEngine::MaskingMode>(static_cast<int>(cmd.floatParam));
+            juce::uint32 maskId = sampleMaskingEngine.createPaintMask(mode, cmd.color);
+            // Note: maskId could be stored for later reference if needed
+        break;
+    case SampleMaskingCommandID::AddPointToMask:
+        sampleMaskingEngine.addPointToMask(static_cast<juce::uint32>(cmd.intParam), cmd.x, cmd.y, cmd.pressure);
+        break;
+    case SampleMaskingCommandID::FinalizeMask:
+        sampleMaskingEngine.finalizeMask(static_cast<juce::uint32>(cmd.intParam));
+        break;
+    case SampleMaskingCommandID::RemoveMask:
+        sampleMaskingEngine.removeMask(static_cast<juce::uint32>(cmd.intParam));
+        break;
+    case SampleMaskingCommandID::ClearAllMasks:
+        sampleMaskingEngine.clearAllMasks();
+        break;
+    case SampleMaskingCommandID::SetMaskMode:
+            auto mode = static_cast<SampleMaskingEngine::MaskingMode>(static_cast<int>(cmd.floatParam));
+            sampleMaskingEngine.setMaskMode(static_cast<juce::uint32>(cmd.intParam), mode);
+        break;
+    case SampleMaskingCommandID::SetMaskIntensity:
+        sampleMaskingEngine.setMaskIntensity(static_cast<juce::uint32>(cmd.intParam), cmd.floatParam);
+        break;
+    case SampleMaskingCommandID::SetMaskParameters:
+        // Use existing constructor pattern: SampleMaskingCommandID + int id + position data
+        sampleMaskingEngine.setMaskParameters(static_cast<juce::uint32>(cmd.intParam), 
+                                            cmd.x, cmd.y, cmd.pressure);
+        break;
+    case SampleMaskingCommandID::BeginPaintStroke:
+            auto mode = static_cast<SampleMaskingEngine::MaskingMode>(static_cast<int>(cmd.floatParam));
+            sampleMaskingEngine.beginPaintStroke(cmd.x, cmd.y, mode);
+        break;
+    case SampleMaskingCommandID::UpdatePaintStroke:
+        sampleMaskingEngine.updatePaintStroke(cmd.x, cmd.y, cmd.pressure);
+        break;
+    case SampleMaskingCommandID::EndPaintStroke:
+        sampleMaskingEngine.endPaintStroke();
+        break;
+    case SampleMaskingCommandID::SetCanvasSize:
+        sampleMaskingEngine.setCanvasSize(cmd.floatParam, static_cast<float>(cmd.doubleParam));
+        break;
+    case SampleMaskingCommandID::SetTimeRange:
+        sampleMaskingEngine.setTimeRange(cmd.floatParam, static_cast<float>(cmd.doubleParam));
+        break;
+    default:
+        break;
+void ARTEFACTAudioProcessor::processPaintCommand(const Command& cmd)
+    switch (cmd.getPaintCommandID())
+    case PaintCommandID::BeginStroke:
+        // Send to both PaintEngine and SpectralSynthEngine for MetaSynth functionality
+        paintEngine.beginStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure, cmd.color);
+        
+        // Create PaintData for SpectralSynthEngine with MetaSynth mapping
+            SpectralSynthEngine::PaintData paintData;
+            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);  // Normalize assuming 8-second canvas
+            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f); // Normalize assuming 100-unit frequency range
+            paintData.pressure = cmd.pressure;
+            paintData.velocity = 0.5f;  // Default velocity
+            paintData.color = cmd.color;
+            paintData.timestamp = juce::Time::getMillisecondCounter();
+            
+            // Calculate derived parameters (this will be done by the engine)
+            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
+            paintData.amplitude = cmd.pressure;
+            paintData.panPosition = 0.0f;  // Will be calculated from color
+            paintData.synthMode = 0;
+            
+            spectralSynthEngine.processPaintStroke(paintData);
+        break;
+    case PaintCommandID::UpdateStroke:
+        paintEngine.updateStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure);
+        
+        // Also send to SpectralSynthEngine for continuous MetaSynth processing
+            SpectralSynthEngine::PaintData paintData;
+            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
+            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
+            paintData.pressure = cmd.pressure;
+            paintData.velocity = 0.7f;  // Higher velocity for updates
+            paintData.color = cmd.color;
+            paintData.timestamp = juce::Time::getMillisecondCounter();
+            
+            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
+            paintData.amplitude = cmd.pressure;
+            paintData.panPosition = 0.0f;
+            paintData.synthMode = 0;
+            
+            spectralSynthEngine.processPaintStroke(paintData);
+        break;
+    case PaintCommandID::EndStroke:
+        paintEngine.endStroke();
+        // SpectralSynthEngine handles end stroke automatically
+        break;
+    case PaintCommandID::ClearCanvas:
+        paintEngine.clearCanvas();
+        // TODO: Add clear method to SpectralSynthEngine
+        break;
+    case PaintCommandID::SetPlayheadPosition:
+        paintEngine.setPlayheadPosition(cmd.floatParam);
+        break;
+    case PaintCommandID::SetPaintActive:
+        paintEngine.setActive(cmd.boolParam);
+        break;
+    case PaintCommandID::SetMasterGain:
+        paintEngine.setMasterGain(cmd.floatParam);
+        break;
+    case PaintCommandID::SetFrequencyRange:
+        paintEngine.setFrequencyRange(cmd.floatParam, static_cast<float>(cmd.doubleParam));
+        break;
+    case PaintCommandID::SetCanvasRegion:
+        paintEngine.setCanvasRegion(cmd.x, cmd.y, cmd.floatParam, static_cast<float>(cmd.doubleParam));
+        break;
+    default:
+        break;
+void ARTEFACTAudioProcessor::processRecordingCommand(const Command& cmd)
+    switch (cmd.getRecordingCommandID())
+    case RecordingCommandID::StartRecording:
+        audioRecorder.startRecording();
+        // RT-SAFE: Removed debug logging from audio thread
+        break;
+    case RecordingCommandID::StopRecording:
+        audioRecorder.stopRecording();
+        // RT-SAFE: Removed debug logging from audio thread
+        break;
+    case RecordingCommandID::ExportToFile:
+        if (cmd.stringParam[0] != '\0')
+            // RT-SAFE: Commented out file I/O in audio thread - needs background thread
+            // juce::File exportFile(cmd.getStringParam());
+            // auto format = static_cast<AudioRecorder::ExportFormat>(cmd.intParam);
+            // audioRecorder.exportToFile(exportFile, format);
+            // TODO(RT-safety): Move to background thread with async completion
+        break;
+    case RecordingCommandID::SetRecordingFormat:
+        // TODO: Implement format setting if needed
+        break;
+    case RecordingCommandID::SetRecordingDirectory:
+        if (cmd.stringParam[0] != '\0')
+            juce::File directory(cmd.getStringParam());
+            audioRecorder.setRecordingDirectory(directory);
+            // RT-SAFE: Removed debug logging from audio thread
+        break;
+    default:
+        break;
+//==============================================================================
+// Paint Brush System
+
+// Orphaned code removed - actual function implementation is below
+    static int debugCallCount = 0;
+    debugCallCount++;
+    
+    // RT-SAFE: All debug logging removed from processBlock to prevent RT violations
+    
+    // CRITICAL: Skip all audio processing if paused (prevents feedback when minimized)
+    if (audioProcessingPaused)
+        buffer.clear();  // Ensure silent output
+        midi.clear();    // Clear any MIDI data
+        return;
+    // Process all pending commands with time limit
+    processCommands();
+
+    // Process pending stroke events for direct audio synthesis
+    drainStrokesForBlock();
+
+    // Update BPM if available from host
+    if (auto playHead = getPlayHead())
+        if (auto positionInfo = playHead->getPosition())
+            if (positionInfo->getBpm().hasValue())
+                double hostBPM = *positionInfo->getBpm();
+                if (std::abs(hostBPM - lastKnownBPM) > 0.1)
+                    lastKnownBPM = hostBPM;
+                    forgeProcessor.setHostBPM(hostBPM);
+                    
+                    // NEW: Also update SampleMaskingEngine with host tempo
+                    sampleMaskingEngine.setHostTempo(hostBPM);
+            // NEW: Update SampleMaskingEngine with host position for tempo sync
+            if (positionInfo->getPpqPosition().hasValue())
+                double ppqPos = *positionInfo->getPpqPosition();
+                bool playing = positionInfo->getIsPlaying();
+                sampleMaskingEngine.setHostPosition(ppqPos, playing);
+    // Process SampleMaskingEngine first (it can run alongside other modes)
+    if (sampleMaskingEngine.hasSample())
+        // RT-SAFE: Use pre-allocated buffer to prevent heap allocation
+        // P0 FIX: Removed setSize from audio thread - buffer pre-allocated in prepareToPlay
+        // maskingBuffer.setSize(buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
+        maskingBuffer.clear();
+        sampleMaskingEngine.processBlock(maskingBuffer);
+        
+        // Mix the masking engine output into the main buffer (increased level for beatmakers!)
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            buffer.addFrom(ch, 0, maskingBuffer, ch, 0, buffer.getNumSamples(), 0.2f); // 🚨 EMERGENCY: Reduced from 0.8f to prevent feedback
+    // Update smoothed magic parameter (150ms ramp)
+    float currentMagic = smoothedMagic.load(std::memory_order_relaxed);
+    if (std::abs(currentMagic - magicTarget) > 0.001f)
+        float rampStep = (magicTarget - currentMagic) / magicRampRate * buffer.getNumSamples();
+        currentMagic += rampStep;
+        
+        // Clamp to target when very close
+        if (std::abs(currentMagic - magicTarget) < 0.001f) {
+            currentMagic = magicTarget;
+        smoothedMagic.store(currentMagic, std::memory_order_relaxed);
+        
+        // Update processor parameters based on smoothed magic
+        updateVintageParameters(currentMagic);
+    // Apply TapeSpeed processor when magic switch is active
+    if (smoothedMagic.load(std::memory_order_relaxed) > 0.001f)
+        tapeSpeed.processBlock(buffer);
+    // Process audio based on current mode
+    switch (currentMode)
+    case ProcessingMode::Canvas:
+        // Canvas mode with staged processing for crash bisection
+            const auto stageMask = (StageMask) debugStageMask.load(std::memory_order_acquire);
+            if (stageOn(stageMask, StageMask::Osc)) {
+                paintEngine.processBlock(buffer);
+                spectralSynthEngine.processBlock(buffer);
+            // RT-SAFE: Removed all debug logging from audio processing path
+            // Note: Other stages like Mask, Filter, Tube, Secret would go here when they exist
+        break;
+        
+    case ProcessingMode::Forge:
+        // Forge mode: Only ForgeProcessor
+        forgeProcessor.processBlock(buffer, midi);
+        break;
+        
+    case ProcessingMode::Hybrid:
+        // Hybrid mode: Mix both processors
+            // RT-SAFE: Use pre-allocated buffer to prevent heap allocation
+            // P0 FIX: Removed setSize from audio thread - buffer pre-allocated in prepareToPlay
+            // paintBuffer.setSize(buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
+            paintBuffer.clear();
+            
+            // Process paint engine into separate buffer
+            paintEngine.processBlock(paintBuffer);
+            
+            // Process forge engine into main buffer
+            forgeProcessor.processBlock(buffer, midi);
+            
+            // Mix the two signals (50/50 for now - could be parameterized)
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                buffer.addFrom(ch, 0, paintBuffer, ch, 0, buffer.getNumSamples(), 0.5f);
+        break;
+    // Apply StereoWidth at the very end (post-Tube stage)
+    if (smoothedMagic.load(std::memory_order_relaxed) > 0.001f)
+        stereoWidth.processBlock(buffer);
+    // 🚨 EMERGENCY HARD LIMITER: Prevent catastrophic feedback damage to speakers/hearing
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        auto* channelData = buffer.getWritePointer(ch);
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+            // Hard clip at ±0.95 to prevent digital overload and feedback loops
+            channelData[sample] = juce::jlimit(-0.95f, 0.95f, channelData[sample]);
+//==============================================================================
+// Paint Brush System
+
+void ARTEFACTAudioProcessor::setActivePaintBrush(int slotIndex)
+    activePaintBrushSlot = juce::jlimit(0, 7, slotIndex);
+void ARTEFACTAudioProcessor::triggerPaintBrush(float canvasY, float pressure)
+    // Convert canvas Y position to frequency using PaintEngine's mapping
+    float frequency = paintEngine.canvasYToFrequency(canvasY);
+    
+    // Convert frequency to semitones relative to 440Hz (A4)
+    float semitones = 12.0f * std::log2(frequency / 440.0f);
+    
+    // Set pitch and trigger the active ForgeVoice
+    auto& voice = forgeProcessor.getVoice(activePaintBrushSlot);
+    if (voice.hasSample())
+        // Set pitch via command system for thread safety
+        pushCommandToQueue(Command(ForgeCommandID::SetPitch, activePaintBrushSlot, semitones));
+        
+        // Set volume based on pressure
+        float volume = juce::jlimit(0.0f, 1.0f, pressure);
+        pushCommandToQueue(Command(ForgeCommandID::SetVolume, activePaintBrushSlot, volume));
+        
+        // Start playback
+        pushCommandToQueue(Command(ForgeCommandID::StartPlayback, activePaintBrushSlot));
+void ARTEFACTAudioProcessor::stopPaintBrush()
+    // Stop the active ForgeVoice
+    pushCommandToQueue(Command(ForgeCommandID::StopPlayback, activePaintBrushSlot));
+//==============================================================================
+// Audio Processing Control (prevents feedback when minimized)
+
+void ARTEFACTAudioProcessor::pauseAudioProcessing()
+    audioProcessingPaused = true;
+    
+    // Stop all active voices immediately (prevent feedback loops)
+    for (int i = 0; i < 8; ++i)
+        pushCommandToQueue(Command(ForgeCommandID::StopPlayback, i));
+    // Pause paint engine
+    paintEngine.setActive(false);
+    
+    // RT-SAFE: Removed debug logging from parameter listener
+void ARTEFACTAudioProcessor::resumeAudioProcessing()
+    audioProcessingPaused = false;
+    
+    // Restore paint engine state based on current mode and parameters
+    bool shouldBeActive = (currentMode == ProcessingMode::Canvas || 
+                          currentMode == ProcessingMode::Hybrid) &&
+                         (apvts.getParameter("paintActive")->getValue() > 0.5f);
+    paintEngine.setActive(shouldBeActive);
+    
+    // RT-SAFE: Removed debug logging from parameter listener
+//==============================================================================
+// Stroke Event Processing
+
+void ARTEFACTAudioProcessor::processStrokeEvent(const Stroke& stroke)
+    // Convert UI stroke to paint command and queue for audio thread
+    // Map stroke coordinates and properties to paint command
+    
+    // Create paint command with stroke data
+    Command paintCmd(PaintCommandID::BeginStroke);
+    
+    // Map stroke properties directly to command fields
+    // x,y are already normalized 0-1 in stroke
+    paintCmd.x = stroke.x;
+    paintCmd.y = stroke.y;
+    paintCmd.pressure = stroke.pressure;
+    
+    // Map stroke properties to paint color
+    paintCmd.color = juce::Colour::fromHSV(stroke.hue, 1.0f, stroke.bright, stroke.pressure);
+    
+    // Additional stroke properties can be mapped to other parameters
+    // size -> floatParam, speed -> doubleParam, dir -> intParam, etc.
+    paintCmd.floatParam = stroke.size;   // Brush size
+    paintCmd.doubleParam = stroke.speed; // Attack speed
+    paintCmd.intParam = stroke.dir > 0 ? 1 : 0; // Direction as int flag
+    
+    // Send to command queue for RT-safe processing
+    pushCommandToQueue(paintCmd);
+void ARTEFACTAudioProcessor::setMagicSwitch(bool enabled)
+    magicSwitchAtomic.store(enabled, std::memory_order_relaxed);
+    magicTarget = enabled ? 1.0f : 0.0f;
+void ARTEFACTAudioProcessor::updateVintageParameters(float magic)
+    // Tape Speed: Fixed mode ratio = lerp(1.0, 1.15, magic)
+    float tapeRatio = 1.0f + magic * 0.15f;  // 1.0 -> 1.15
+    tapeSpeed.setSpeedRatio(tapeRatio);
+    tapeSpeed.setMode(0);  // Fixed mode for MVP
+    
+    // Stereo Width: width = lerp(1.0, 1.4, magic)
+    float width = 1.0f + magic * 0.4f;  // 1.0 -> 1.4
+    stereoWidth.setWidth(width);
+    
+    // EMU Filter: emuMacro = lerp(0.10, 0.85, magic)
+    float emuMacro = 0.10f + magic * 0.75f;  // 0.10 -> 0.85
+    // TODO: Add EMU filter integration (needs spectralSynthEngine accessor)
+    
+    // Tube Drive: tubeDrive = lerp(0.10, 0.75, magic) -> convert to dB
+    float tubeDrive = 0.10f + magic * 0.65f;  // 0.10 -> 0.75
+    float tubeDriveDb = tubeDrive * 24.0f;    // Convert to 0-24dB range
+    // TODO: Add Tube stage integration (needs spectralSynthEngine accessor)
+void ARTEFACTAudioProcessor::drainStrokesForBlock()
+    // RT-SAFE: Process pending paint commands from stroke events
+    // Maximum strokes per audio block to prevent RT violations
+    constexpr int maxStrokesPerBlock = 8;
+    int strokesProcessed = 0;
+    
+    Command cmd;
+    while (commandQueue.try_dequeue(cmd) && strokesProcessed < maxStrokesPerBlock)
+        if (cmd.type == PaintCommandID::BeginStroke)
+            // Convert paint command to spectral synthesis parameters
+            spectralSynthEngine.processPaintStrokeDirectToAudio(cmd.x, cmd.y, cmd.pressure, cmd.color);
+            ++strokesProcessed;
+        else if (cmd.type == PaintCommandID::ContinueStroke)
+            spectralSynthEngine.processPaintStrokeDirectToAudio(cmd.x, cmd.y, cmd.pressure, juce::Colours::red);
+            ++strokesProcessed;
+        else if (cmd.type == PaintCommandID::EndStroke)
+            // End stroke processing - could trigger release envelope
+            ++strokesProcessed;
+//==============================================================================
+// Plugin Factory
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+    return new ARTEFACTAudioProcessor();
+

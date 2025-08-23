@@ -1,0 +1,242 @@
+# Test Infrastructure Auditor - Build Stability Monitor Variant
+# Specialized for CMake test configuration and executable validation
+
+name: test-infrastructure-auditor
+parent: build-stability-monitor
+version: "1.0.0"
+specialization: "Test build infrastructure and executable validation"
+
+description: >
+  Specialized variant focused on test infrastructure completeness in SpectralCanvas Pro.
+  Validates CMake test configuration, executable generation, missing test builds,
+  and ensures comprehensive test coverage with proper build system integration
+  for continuous validation of RT-safety and DSP correctness.
+
+# Performance Improvement Projection
+performance_improvement:
+  precision_gain: "+0.25 (0.75 → 1.00)"
+  speed_impact: "+15% analysis time"
+  coverage_expansion: "Test build patterns, CMake target validation, executable completeness"
+  infrastructure_expertise: "Deep CMake and test infrastructure knowledge"
+
+# Enhanced Trigger Conditions
+additional_triggers:
+  diff_path_matches:
+    - "CMakeLists.txt"
+    - "Tests/**"
+    - "Source/Tests/**"
+    - "test-*.bat"
+    - "tdd-guard.*"
+    - "*.cmake"
+  diff_contains:
+    - "add_executable"
+    - "add_test"
+    - "ctest"
+    - "gtest"
+    - "TEST("
+    - "target_link_libraries.*test"
+    - "enable_testing"
+
+# Specialized Rules
+specialized_rules:
+  test_executable_completeness:
+    missing_executables:
+      description: "All test source files must generate executable files"
+      check_patterns:
+        - "add_executable.*Test.*"
+        - "target_link_libraries.*Test.*"
+      violations:
+        - "Test.*\\.cpp.*no.*executable"
+        - "test.*target.*missing"
+      severity: critical
+      
+    test_registration:
+      description: "All test executables must be registered with CTest"
+      required_patterns:
+        - "add_test.*Test.*"
+        - "gtest_discover_tests"
+      violations:
+        - "executable.*not.*registered.*ctest"
+      severity: high
+      
+    debug_symbols_availability:
+      description: "Test executables should have debug symbols"
+      check_patterns:
+        - "RelWithDebInfo.*test"
+        - "Debug.*test.*build"
+      violations:
+        - "Release.*only.*test"
+      severity: medium
+
+  cmake_test_configuration:
+    test_discovery:
+      description: "CMake should properly discover and configure tests"
+      required_patterns:
+        - "enable_testing()"
+        - "include(GoogleTest)"
+        - "find_package.*GTest"
+      violations:
+        - "tests.*without.*enable_testing"
+      severity: critical
+      
+    target_dependencies:
+      description: "Test targets must link required libraries"
+      check_patterns:
+        - "target_link_libraries.*JUCE"
+        - "target_link_libraries.*gtest"
+      violations:
+        - "test.*missing.*dependencies"
+      severity: high
+      
+    output_directories:
+      description: "Test executables should be in predictable locations"
+      expected_paths:
+        - "build/Tests/"
+        - "build/Source/Tests/"
+      violations:
+        - "test.*executable.*wrong.*location"
+      severity: medium
+
+  test_coverage_validation:
+    critical_component_coverage:
+      description: "Critical components must have corresponding tests"
+      required_tests:
+        - "TestSpectralSynthEngine"
+        - "TestPaintQueue"
+        - "TestEMUFilter"
+        - "TestAtomicOscillator"
+      missing_severity: high
+      
+    rt_safety_test_presence:
+      description: "RT-safety tests must be present and buildable"
+      required_patterns:
+        - "TestRTSafety"
+        - "TestPaintPerformance"
+        - "TestUIAudioThreadSafety"
+      violations:
+        - "rt.*safety.*test.*missing"
+      severity: critical
+
+# Test Infrastructure Analysis
+test_analysis:
+  build_system_health:
+    target_generation: "Verify all test targets generate properly"
+    dependency_resolution: "Check test library dependencies are satisfied"
+    parallel_build_support: "Validate tests can build in parallel"
+    
+  execution_environment:
+    runtime_dependencies: "Check test runtime requirements are met"
+    working_directory: "Validate test execution paths are correct"
+    environment_variables: "Check required environment for test execution"
+    
+  continuous_integration:
+    automation_compatibility: "Tests should be automatable via scripts"
+    failure_reporting: "Clear failure reporting and debugging support"
+    performance_tracking: "Test execution time monitoring"
+
+# Enhanced KPIs
+additional_kpis:
+  test_build_completeness: "> 0.95"    # Percentage of tests that build successfully
+  executable_coverage: "= 1.0"        # All test source files have executables
+  ctest_registration_rate: "> 0.98"   # Tests registered with CTest
+  missing_dependency_count: "= 0"     # No missing test dependencies
+
+# Test Fixtures
+test_fixtures:
+  - name: "test_source_without_executable"
+    cmake_content: |
+      # Missing add_executable for test source
+      # TestMissingExecutable.cpp exists but no CMake target
+    expected_violations: ["Test source file without corresponding executable target"]
+    
+  - name: "executable_without_ctest_registration"
+    cmake_content: |
+      add_executable(TestUnregistered TestUnregistered.cpp)
+      target_link_libraries(TestUnregistered PRIVATE juce::juce_core)
+      # Missing: add_test(NAME TestUnregistered COMMAND TestUnregistered)
+    expected_violations: ["Test executable not registered with CTest"]
+    
+  - name: "proper_test_configuration"
+    cmake_content: |
+      add_executable(TestProperSetup TestProperSetup.cpp)
+      target_link_libraries(TestProperSetup PRIVATE 
+          juce::juce_core 
+          juce::juce_audio_basics
+          gtest::gtest_main)
+      add_test(NAME TestProperSetup COMMAND TestProperSetup)
+    expected_violations: []
+
+  - name: "missing_critical_test"
+    analysis_result: |
+      Source files found:
+      - SpectralSynthEngine.cpp (no corresponding test)
+      - PaintQueue.h (no corresponding test)
+    expected_violations: ["Critical component missing test coverage"]
+
+  - name: "test_missing_dependencies"
+    cmake_content: |
+      add_executable(TestIncomplete TestIncomplete.cpp)
+      # Missing required JUCE dependencies
+      add_test(NAME TestIncomplete COMMAND TestIncomplete)
+    expected_violations: ["Test target missing required dependencies"]
+
+# Output Schema Extension
+output_extensions:
+  test_infrastructure_health:
+    build_completeness_score: number
+    executable_generation_rate: number
+    ctest_registration_coverage: number
+    dependency_satisfaction_rate: number
+  infrastructure_violations:
+    missing_executables: array
+    unregistered_tests: array
+    dependency_violations: array
+    coverage_gaps: array
+
+# Infrastructure Validation Checks
+validation_checks:
+  cmake_analysis:
+    target_enumeration: "List all test targets defined in CMake"
+    dependency_graph: "Analyze test target dependencies"
+    build_configuration: "Check Debug/Release/RelWithDebInfo support"
+    
+  filesystem_verification:
+    executable_existence: "Verify test executables exist in build directory"
+    debug_symbol_presence: "Check for .pdb files alongside executables"
+    source_to_target_mapping: "Map test source files to CMake targets"
+    
+  ctest_integration:
+    test_discovery: "Enumerate tests known to CTest"
+    execution_validation: "Verify tests can be executed via CTest"
+    parallel_execution: "Check tests support parallel execution"
+
+# Build System Patterns
+build_patterns:
+  expected_cmake_structure: |
+    # Each test should follow this pattern:
+    add_executable(TestName TestName.cpp)
+    target_link_libraries(TestName PRIVATE 
+        project_core_lib
+        juce::juce_audio_basics
+        gtest::gtest_main)
+    add_test(NAME TestName COMMAND TestName)
+    
+  test_organization:
+    source_location: "Source/Tests/ or Tests/"
+    executable_output: "build/Tests/ or build/Source/Tests/"
+    naming_convention: "Test*.cpp → Test*.exe"
+
+# Deployment Trigger
+deployment_trigger:
+  build_failures: "Test build failures or missing executables detected"
+  cmake_changes: "Changes to CMakeLists.txt or test configuration"
+  ci_pipeline_issues: "Continuous integration test execution problems"
+
+# Integration Notes
+justification: |
+  Core build-stability-monitor detected no critical Windows macro issues but
+  missed test infrastructure problems. Current analysis shows 3 missing test
+  executables (SpectralCoreTests, RenderSineFFTTest, TestCanvasToSpectral_Preconditions)
+  despite source files existing. CMake configuration gaps prevent comprehensive
+  test validation. Specialized variant needed for test infrastructure completeness
+  with emphasis on executable generation and CTest integration validation.

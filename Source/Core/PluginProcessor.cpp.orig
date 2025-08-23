@@ -1,0 +1,262 @@
+// Source/Core/PluginProcessor.cpp
+// OPERATION CLEAN SLATE (REBOOT): Minimal stub implementation
+
+#include "PluginProcessor.h"
+#include "GUI/PluginEditor.h"
+#include "Core/SpectralSynthEngine.h"
+
+//==============================================================================
+ARTEFACTAudioProcessor::ARTEFACTAudioProcessor()
+#ifndef JucePlugin_PreferredChannelConfigurations
+     : AudioProcessor (BusesProperties()
+                     #if ! JucePlugin_IsMidiEffect
+                      #if ! JucePlugin_IsSynth
+                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                      #endif
+                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                     #endif
+                       ),
+#endif
+       apvts(*this, nullptr, "PARAMETERS", createParameterLayout()),
+       engine(std::make_unique<SpectralSynthEngine>())
+{
+}
+
+ARTEFACTAudioProcessor::~ARTEFACTAudioProcessor()
+{
+}
+
+
+//==============================================================================
+void ARTEFACTAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+{
+    currentSampleRate = sampleRate;
+    
+    // Initialize spectral synthesis engine
+    if (engine)
+    {
+        engine->prepareToPlay(sampleRate, samplesPerBlock, getTotalNumOutputChannels());
+    }
+}
+
+void ARTEFACTAudioProcessor::releaseResources()
+{
+}
+
+#ifndef JucePlugin_PreferredChannelConfigurations
+bool ARTEFACTAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+  #if JucePlugin_IsMidiEffect
+    juce::ignoreUnused (layouts);
+    return true;
+  #else
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
+     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
+
+   #if ! JucePlugin_IsSynth
+    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+        return false;
+   #endif
+
+    return true;
+  #endif
+}
+#endif
+
+void ARTEFACTAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
+                                                 juce::MidiBuffer& midiBuffer)
+{
+    juce::ignoreUnused (midiBuffer);
+    juce::ScopedNoDenormals noDenormals;
+
+    // 1) Clear any output-only channels (robust if inputs ever appear)
+    const int totalNumInputChannels  = getTotalNumInputChannels();
+    const int totalNumOutputChannels = getTotalNumOutputChannels();
+    for (int ch = totalNumInputChannels; ch < totalNumOutputChannels; ++ch)
+        buffer.clear (ch, 0, buffer.getNumSamples());
+
+    // This is a synth — we own the full output buffer each block.
+    buffer.clear();
+
+    // 2) RT-safe parameter snapshot (atomic loads only)
+    const auto params = snapshot(); // { masterGain, freqMax, paintActive }
+
+    // 3) Drain SPSC queue; latest gesture wins this block
+    PaintGesture gesture {};
+    bool sawGestureThisBlock = false;
+    while (paintQueue.pop (gesture))
+        sawGestureThisBlock = true;
+
+    // 4) If a gesture arrived, compute new targets (log Y->freq, pressure->amp)
+    if (sawGestureThisBlock)
+    {
+        const float canvasH = (float) juce::jmax (1, editorHeightFallback);
+        const float ny = juce::jlimit (0.0f, 1.0f, gesture.y / canvasH);
+
+        const float logMin = std::log10 (20.0f);
+        const float logMax = std::log10 (juce::jmax (params.freqMax, 20.0f));
+        const float freq   = std::pow (10.0f, logMin + (1.0f - ny) * (logMax - logMin));
+
+        const float amp    = juce::jlimit (0.0f, 0.5f, gesture.pressure * 0.5f); // safety cap 0.5
+
+        // Honor paintActive by zeroing the target amp if disabled
+        engine->setTargets (freq, params.paintActive ? amp : 0.0f);
+    }
+
+    // 5) Update engine gain (smoothed in engine if desired)
+    engine->setParams (params.masterGain);
+
+    // 6) Render
+    engine->processBlock (buffer);
+}
+
+
+juce::AudioProcessorEditor* ARTEFACTAudioProcessor::createEditor()
+{
+    return new ARTEFACTAudioProcessorEditor (*this);
+}
+
+//==============================================================================
+void ARTEFACTAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
+}
+
+void ARTEFACTAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+
+    if (xmlState.get() != nullptr)
+        if (xmlState->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+//==============================================================================
+void ARTEFACTAudioProcessor::parameterChanged (const juce::String& parameterID, float newValue)
+{
+    // Minimal parameter handling
+}
+
+//==============================================================================
+// Minimal stub implementations for command system
+bool ARTEFACTAudioProcessor::pushCommandToQueue(const Command& newCommand)
+{
+    return true; // Stub
+}
+
+void ARTEFACTAudioProcessor::processCommands()
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::processCommand(const Command& cmd)
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::processForgeCommand(const Command& cmd)
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::processSampleMaskingCommand(const Command& cmd)
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::processPaintCommand(const Command& cmd)
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::processRecordingCommand(const Command& cmd)
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::setActivePaintBrush(int slotIndex)
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::triggerPaintBrush(float canvasY, float pressure)
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::stopPaintBrush()
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::pauseAudioProcessing()
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::resumeAudioProcessing()
+{
+    // Stub
+}
+
+void ARTEFACTAudioProcessor::updateAndRender(juce::AudioBuffer<float>& buffer)
+{
+    // Stub
+}
+
+//==============================================================================
+// Paint queue and parameter access methods
+
+PaintGestureQueue& ARTEFACTAudioProcessor::getPaintQueue() noexcept
+{
+    return paintQueue;
+}
+
+ARTEFACTAudioProcessor::ParameterSnapshot ARTEFACTAudioProcessor::snapshot() const noexcept
+{
+    ParameterSnapshot params;
+    
+    // Use APVTS to get current parameter values
+    if (auto* masterGainParam = apvts.getRawParameterValue(ParamIDs::masterGain))
+        params.masterGain = *masterGainParam;
+    
+    if (auto* freqRangeParam = apvts.getRawParameterValue(ParamIDs::frequencyRange))
+        params.freqMax = *freqRangeParam;
+    
+    if (auto* paintActiveParam = apvts.getRawParameterValue(ParamIDs::paintActive))
+        params.paintActive = *paintActiveParam > 0.5f;
+    
+    return params;
+}
+
+//==============================================================================
+juce::AudioProcessorValueTreeState::ParameterLayout ARTEFACTAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        ParamIDs::masterGain, "Master Gain", 0.0f, 1.0f, 0.7f));
+    
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        ParamIDs::paintActive, "Paint Active", false));
+    
+    layout.add(std::make_unique<juce::AudioParameterInt>(
+        ParamIDs::processingMode, "Processing Mode", 0, 2, 0));
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        ParamIDs::brushSize, "Brush Size", 1.0f, 100.0f, 10.0f));
+    
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        ParamIDs::frequencyRange, "Frequency Range", 20.0f, 20000.0f, 1000.0f));
+
+    return layout;
+}
+
+//==============================================================================
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new ARTEFACTAudioProcessor();
+}

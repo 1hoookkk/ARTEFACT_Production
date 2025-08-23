@@ -1,0 +1,201 @@
+# Windows Macro Hygiene Profile v1.0
+# Specialized Build Stability Monitor variant for Windows-specific issues
+
+# Migration Metadata
+source_path: "docs/agents/profiles/build-stability-monitor/windows-macro-hygiene.profile.yaml"
+migration_date: "2025-08-20"
+
+name: windows-macro-hygiene
+parent: build-stability-monitor
+version: "1.0.0"
+specialization: "Windows header pollution and macro conflict detection"
+
+description: >
+  Specialized variant focused on Windows-specific compilation issues including
+  min/max macro pollution, header include order problems, and Windows API conflicts.
+  Critical for SpectralCanvas Pro's cross-platform stability.
+
+# Enhanced Triggers
+additional_triggers:
+  diff_contains:
+    - "windows.h"
+    - "windef.h"
+    - "minmax.h"
+    - "#define"
+    - "std::max"
+    - "std::min"
+    - "RGB("
+    - "NOMINMAX"
+
+# Windows-Specific Rules
+specialized_rules:
+  macro_pollution:
+    min_max_conflict:
+      description: "Windows.h defines min/max macros that conflict with std::min/max"
+      detection_patterns:
+        - "std::max.*after.*windows.h"
+        - "std::min.*after.*windows.h"
+        - "algorithm.*after.*windows.h"
+      severity: critical
+      solution: "Define NOMINMAX before including windows.h"
+      
+    rgb_macro_conflict:
+      description: "Windows RGB macro conflicts with color processing"
+      detection_patterns:
+        - "RGB\\s*\\(.*color.*processing"
+        - "RGB\\s*\\(.*graphics.*context"
+      severity: high
+      solution: "Use qualified names or undefine RGB locally"
+
+  include_order_issues:
+    windows_header_placement:
+      description: "Windows headers should come after standard library"
+      correct_order:
+        - "Standard library headers first"
+        - "JUCE headers second" 
+        - "Windows headers last"
+      violation_patterns:
+        - "windows.h.*before.*iostream"
+        - "windef.h.*before.*juce"
+        
+    lean_and_mean:
+      description: "Use WIN32_LEAN_AND_MEAN to reduce header bloat"
+      required_pattern: "#define WIN32_LEAN_AND_MEAN"
+      placement: "Before windows.h inclusion"
+      benefits: "Faster compilation, fewer conflicts"
+
+  unicode_handling:
+    tchar_usage:
+      description: "Avoid TCHAR in favor of explicit char/wchar_t"
+      deprecated_patterns:
+        - "TCHAR"
+        - "_T\\("
+        - "LPCTSTR"
+      modern_alternatives:
+        - "Use std::string for UTF-8"
+        - "Use std::wstring for UTF-16" 
+        - "Use JUCE String for cross-platform"
+
+# Platform-Specific Definitions
+windows_definitions:
+  required_definitions:
+    - name: "NOMINMAX"
+      purpose: "Prevent min/max macro definition"
+      placement: "CMakeLists.txt or before windows.h"
+      
+    - name: "WIN32_LEAN_AND_MEAN"
+      purpose: "Reduce windows.h bloat"
+      impact: "Faster compilation"
+      
+    - name: "_USE_MATH_DEFINES"
+      purpose: "Enable M_PI and other math constants"
+      context: "When using math.h constants"
+
+  dangerous_definitions:
+    - name: "min/max macros"
+      source: "windef.h (included by windows.h)"
+      conflict: "std::min/std::max algorithms"
+      
+    - name: "RGB macro"
+      source: "wingdi.h"
+      conflict: "Color processing functions"
+
+# Compiler-Specific Issues
+compiler_considerations:
+  msvc_specific:
+    warning_suppressions:
+      - "C4996: deprecated function warnings"
+      - "C4244: conversion warnings"
+    pragma_usage: "Use sparingly, prefer code fixes"
+    
+  mingw_compatibility:
+    header_differences: "MinGW may have different header behavior"
+    linking_issues: "Different import library requirements"
+    
+  clang_on_windows:
+    compatibility_mode: "Check -fms-compatibility flag usage"
+    header_parsing: "May be stricter than MSVC"
+
+# Enhanced KPIs
+additional_kpis:
+  macro_conflict_detection: "> 0.95"     # Accuracy of conflict detection
+  windows_compatibility_score: "> 0.9"   # Windows build health
+  header_order_violations: "= 0"         # Include order problems
+  definition_compliance: "> 0.95"        # Required definitions present
+
+# Test Fixtures
+test_fixtures:
+  - name: "min_max_conflict"
+    code: |
+      #include <windows.h>
+      #include <algorithm>
+      
+      void test() {
+          auto result = std::max(1, 2);  // VIOLATION: will fail
+      }
+    expected_violations: ["min/max macro conflict"]
+    
+  - name: "correct_nominmax_usage"
+    code: |
+      #define NOMINMAX
+      #define WIN32_LEAN_AND_MEAN
+      #include <windows.h>
+      #include <algorithm>
+      
+      void test() {
+          auto result = std::max(1, 2);  // OK: macros prevented
+      }
+    expected_violations: []
+    
+  - name: "rgb_macro_conflict"
+    code: |
+      #include <windows.h>
+      
+      void processColor() {
+          auto color = RGB(255, 128, 64);  // POTENTIAL CONFLICT
+          // Color processing code
+      }
+    expected_violations: ["RGB macro usage in color processing"]
+
+# Mitigation Strategies
+mitigation_strategies:
+  cmake_level:
+    definitions: |
+      target_compile_definitions(${TARGET} PRIVATE
+          NOMINMAX
+          WIN32_LEAN_AND_MEAN
+          _USE_MATH_DEFINES
+      )
+    benefits: "Project-wide protection"
+    
+  header_level:
+    local_protection: |
+      #ifdef _WIN32
+      #define NOMINMAX
+      #define WIN32_LEAN_AND_MEAN
+      #include <windows.h>
+      #endif
+    scope: "File-specific protection"
+    
+  algorithm_replacement:
+    avoid_std_min_max: "Use JUCE jmin/jmax as alternative"
+    custom_templates: "Define project-specific min/max"
+
+# Output Extensions
+output_extensions:
+  windows_analysis:
+    macro_conflicts:
+      - macro_name: string
+        conflict_type: enum[min_max, rgb, other]
+        affected_files: array[string]
+        severity: enum[critical, high, medium, low]
+        
+    header_order_issues:
+      - file_path: string
+        problematic_sequence: array[string]
+        recommended_order: array[string]
+        
+    definition_status:
+      required_definitions_present: array[string]
+      missing_definitions: array[string]
+      conflicting_definitions: array[string]

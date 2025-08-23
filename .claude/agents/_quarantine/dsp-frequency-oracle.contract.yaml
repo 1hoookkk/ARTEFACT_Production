@@ -1,0 +1,215 @@
+# DSP Frequency Oracle Contract v1.0
+# DSP mathematics and frequency mapping validator for SpectralCanvas Pro
+
+# Migration Metadata
+source_path: "docs/agents/dsp-frequency-oracle.contract.yaml"
+migration_date: "2025-08-20"
+
+name: dsp-frequency-oracle
+version: "1.0.0"
+model: analysis-only
+color: blue
+priority: high
+
+description: >
+  Validates DSP mathematical correctness, frequency mapping accuracy, and 
+  spectral processing integrity. Ensures logarithmic Y→frequency mapping
+  matches perceptual requirements and STFT processing maintains phase continuity.
+
+# Best-of-N Design Options
+design_options:
+  champion: hybrid_validation
+  alternatives:
+    - mathematical_proofs
+    - empirical_analysis
+    
+  mathematical_proofs:
+    approach: "Pure formula validation with numerical checks"
+    accuracy: high
+    speed: fast
+    coverage: medium
+    tradeoffs: "Catches math errors but misses implementation bugs"
+    
+  empirical_analysis:
+    approach: "FFT bin analysis with golden reference validation"
+    accuracy: medium
+    speed: slow
+    coverage: high
+    tradeoffs: "Finds real-world issues but requires test signals"
+    
+  hybrid_validation:
+    approach: "Mathematical proofs + empirical validation + golden references"
+    accuracy: high
+    speed: medium  
+    coverage: high
+    tradeoffs: "Comprehensive but moderate complexity"
+
+# Analysis Targets
+analysis_targets:
+  frequency_mapping:
+    files:
+      - "Source/Core/ColorToSpectralMapper.cpp"
+      - "Source/Spectral/SpectralPath.cpp" 
+      - "Source/CanvasComponent.cpp"
+      - "docs/**/mapping*.md"
+    validations:
+      - logarithmic_y_to_freq
+      - canvas_coordinate_normalization
+      - frequency_range_bounds
+      
+  spectral_processing:
+    files:
+      - "Source/Core/SpectralSynthEngine.cpp"
+      - "Source/Spectral/STFTEngine.cpp"
+      - "Source/Core/AtomicOscillator.cpp"
+    validations:
+      - phase_continuity
+      - stft_perfect_reconstruction
+      - bin_frequency_accuracy
+
+# Mathematical Validations
+math_checks:
+  logarithmic_mapping:
+    formula: "f(y) = f_min * (f_max/f_min)^y"
+    parameters:
+      f_min: 20.0  # Hz
+      f_max: 20000.0  # Hz
+      y_range: [0.0, 1.0]
+    tolerance_hz: 0.5
+    test_points:
+      - {y: 0.0, expected_freq: 20.0, tolerance: 0.1}
+      - {y: 0.5, expected_freq: 447.2, tolerance: 5.0}  # Geometric mean
+      - {y: 1.0, expected_freq: 20000.0, tolerance: 10.0}
+      
+  octave_relationships:
+    check: "freq_ratio_test"
+    expected_ratio: 2.0
+    tolerance: 0.1
+    description: "Equal Y-axis spacing should produce octave relationships"
+    
+  phase_continuity:
+    max_phase_jump: 3.14159  # π radians 
+    window_overlap: 0.75     # 75% overlap
+    description: "STFT processing should maintain phase continuity"
+
+# STFT Analysis
+stft_validation:
+  sample_rates: [44100, 48000, 96000]
+  block_sizes: [64, 128, 256, 512, 1024]
+  window_functions: ["hann", "blackman"]
+  
+  perfect_reconstruction:
+    tolerance_db: -80.0
+    description: "STFT→ISTFT should reconstruct original signal"
+    
+  bin_alignment:
+    tolerance_cents: 25  # Quarter-tone accuracy
+    description: "FFT bins should align with intended frequencies"
+
+# Input Parameters
+inputs:
+  frequency_range:
+    f_min: 20.0
+    f_max: 20000.0
+  sample_rates: [44100, 48000, 96000]
+  canvas_dimensions:
+    width: 800
+    height: 600
+  block_sizes: [64, 128, 256]
+
+# Output Specification
+output:
+  format: json
+  schema:
+    report:
+      - check: string
+        status: enum[pass, fail, warning]
+        details: string
+        measured_value: number
+        expected_value: number
+        tolerance: number
+        severity: enum[critical, high, medium, low]
+    goldens:
+      frequency_mapping:
+        - y_coord: number
+          expected_freq: number
+          actual_freq: number
+          error_hz: number
+      stft_bins:
+        - bin_index: integer
+          frequency_hz: number
+          phase_deg: number
+    summary:
+      total_checks: integer
+      passed: integer
+      failed: integer
+      warnings: integer
+
+# Test Fixtures & Golden References
+test_fixtures:
+  sine_wave_tests:
+    - name: "440hz_sine"
+      frequency: 440.0
+      amplitude: 0.5
+      duration_samples: 1024
+      expected_bin: "calculated from sample_rate/block_size"
+      
+  sweep_tests:
+    - name: "logarithmic_sweep"
+      start_freq: 20.0
+      end_freq: 20000.0
+      duration_samples: 48000
+      sweep_type: "logarithmic"
+      
+  mapping_tests:
+    - name: "canvas_y_to_freq"
+      canvas_height: 600
+      test_coordinates: [0, 150, 300, 450, 599]
+      expected_frequencies: [20000, 2828, 400, 56.6, 20]  # Top-to-bottom
+
+# Posthooks
+posthooks:
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"SpectralCoreTests\")"
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"CanvasToSpectral\")"
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"RenderSineFFTTest\")"
+
+# Performance KPIs
+kpis:
+  bin_err_rms: "< 1.0 Hz"      # RMS frequency error across all bins
+  max_dev_hz: "< 10.0 Hz"      # Maximum frequency deviation
+  phase_wrap_incidents: "= 0"   # Count of phase discontinuities
+  analysis_time_sec: "< 45"     # Time for full analysis
+
+# Trigger Conditions
+triggers:
+  diff_path_matches:
+    - "Source/Core/ColorToSpectralMapper.*"
+    - "Source/Spectral/**"
+    - "Source/Core/SpectralSynthEngine.*"
+    - "Source/Core/AtomicOscillator.*"
+    - "Source/CanvasComponent.*"
+    - "docs/**/mapping*.md"
+  diff_contains:
+    - "mapYToFrequency"
+    - "std::log2"
+    - "frequency"
+    - "spectral"
+    - "FFT"
+    - "STFT"
+    - "oscillator"
+
+# Context Knowledge
+project_context:
+  metasynth_paradigm:
+    x_axis: "time/phase progression"
+    y_axis: "frequency (logarithmic scale, 20Hz-20kHz)"
+    color_mapping: "RGB to stereo positioning"
+    amplitude_mapping: "brightness/pressure to volume"
+  current_implementation:
+    mapper_file: "Source/Core/ColorToSpectralMapper.cpp"
+    canvas_file: "Source/CanvasComponent.cpp" 
+    synthesis_file: "Source/Core/SpectralSynthEngine.cpp"
+  critical_requirements:
+    perceptual_accuracy: "Equal visual spacing = equal musical intervals"
+    professional_standard: "All spectral editors use logarithmic scaling"
+    range_coverage: "Full human hearing range 20Hz-20kHz"

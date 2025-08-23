@@ -1,0 +1,209 @@
+# Parameter Snapshot Auditor Profile v1.0
+# Specialized JUCE Integration Specialist variant for APVTS usage validation
+
+name: parameter-snapshot-auditor
+parent: juce-integration-specialist
+version: "1.0.0"
+specialization: "AudioProcessorValueTreeState parameter usage validation"
+
+description: >
+  Specialized variant focused on APVTS parameter access patterns, snapshot timing,
+  and RT-safe parameter usage. Ensures optimal parameter handling in SpectralCanvas Pro's
+  real-time audio processing with minimal CPU overhead and zero dropouts.
+
+# Enhanced Triggers
+additional_triggers:
+  diff_contains:
+    - "getRawParameterValue"
+    - "getParameterAsValue"
+    - "apvts"
+    - "AudioProcessorValueTreeState"
+    - "parameterChanged"
+    - "Parameter.*Value"
+
+# Specialized APVTS Rules
+specialized_rules:
+  snapshot_timing:
+    once_per_block:
+      description: "Parameters should be read once per processBlock"
+      violation_patterns:
+        - "getRawParameterValue.*loop"
+        - "parameter.*load.*inner.*loop"
+        - "multiple.*getRawParameterValue.*same.*parameter"
+      severity: high
+      best_practice: "Read all parameters at start of processBlock"
+      
+    batch_parameter_access:
+      description: "Batch parameter reads for efficiency"
+      pattern: "Read all parameters in sequence, not scattered"
+      cache_efficiency: "Better CPU cache utilization"
+      
+  parameter_smoothing:
+    required_for_audio_params:
+      parameters: ["frequency", "amplitude", "cutoff", "resonance"]
+      mechanism: "LinearSmoothedValue or equivalent"
+      reason: "Prevents audio clicks and pops"
+      
+    smoothing_time_constants:
+      recommended_range: "10-50 ms"
+      too_fast: "< 5 ms may cause artifacts"
+      too_slow: "> 200 ms poor responsiveness"
+      sample_rate_dependent: true
+
+  parameter_thread_safety:
+    audio_thread_reads:
+      safe_methods:
+        - "getRawParameterValue()->load()"
+        - "atomic parameter access"
+      unsafe_methods:
+        - "getString() on audio thread"
+        - "getParameterAsValue().getValue()"
+      
+    gui_thread_writes:
+      safe_methods:
+        - "setParameterNotifyingHost()"
+        - "Parameter::beginChangeGesture()"
+      timing_constraints:
+        - "Not during processBlock execution"
+        - "Use appropriate change gestures"
+
+# Parameter Access Pattern Analysis  
+access_pattern_analysis:
+  efficient_patterns:
+    parameter_struct:
+      description: "Group related parameters in a struct"
+      example: |
+        struct ParameterSnapshot {
+            float frequency;
+            float amplitude;
+            float cutoff;
+        };
+      benefits: ["Cache efficiency", "Atomic snapshot", "Clear ownership"]
+      
+    atomic_caching:
+      description: "Cache parameter values in atomic variables"
+      update_frequency: "Once per audio block"
+      access_pattern: "Audio thread reads cached atomic values"
+      
+  inefficient_patterns:
+    repeated_access:
+      description: "Same parameter accessed multiple times"
+      performance_impact: "Unnecessary atomic operations"
+      solution: "Read once, use local variable"
+      
+    string_parameters_on_audio_thread:
+      description: "String parameter access in processBlock"
+      severity: critical
+      reason: "String operations not RT-safe"
+      alternative: "Use indexed/enumerated parameters"
+
+# Parameter Type Optimization
+parameter_types:
+  float_parameters:
+    optimal_for: ["Continuous controls", "Audio-rate modulation"]
+    access_cost: "Low (single atomic read)"
+    smoothing: "LinearSmoothedValue recommended"
+    
+  bool_parameters:
+    optimal_for: ["On/off switches", "Mode selection"]
+    access_cost: "Very low"
+    atomic_requirement: "std::atomic<bool> for thread safety"
+    
+  choice_parameters:
+    optimal_for: ["Discrete options", "Algorithm selection"]
+    rt_safe_access: "getIndex() rather than getCurrentChoiceName()"
+    caching_strategy: "Convert to enum/int on parameter change"
+    
+  ranged_parameters:
+    normalization: "Use denormalized values on audio thread"
+    range_conversion: "Perform in GUI thread, not audio thread"
+
+# Performance Impact Analysis
+performance_analysis:
+  parameter_access_cost:
+    atomic_load_cost: "~1-2 CPU cycles"
+    cache_miss_cost: "~100-300 CPU cycles"  
+    string_access_cost: "> 1000 CPU cycles (avoid!)"
+    
+  optimization_strategies:
+    locality_grouping: "Group related parameters for cache efficiency"
+    read_reordering: "Read parameters in memory order"
+    bulk_updates: "Process parameter changes in batches"
+
+# Enhanced KPIs
+additional_kpis:
+  parameter_efficiency_score: "> 0.9"       # Optimal access patterns
+  snapshot_timing_accuracy: "> 0.95"        # Correct once-per-block pattern
+  smoothing_compliance: "> 0.8"             # Audio parameters with smoothing
+  rt_safety_violations: "= 0"               # String/unsafe accesses
+  cache_efficiency_prediction: "> 0.85"     # Parameter access cache-friendliness
+
+# Test Fixtures
+test_fixtures:
+  - name: "inefficient_repeated_access"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          for (int i = 0; i < buffer.getNumSamples(); ++i) {
+              auto freq = freqParam->getRawParameterValue();  // VIOLATION
+              auto amp = ampParam->getRawParameterValue();    // VIOLATION
+              // process sample
+          }
+      }
+    expected_violations: ["Repeated parameter access in loop"]
+    
+  - name: "string_access_audio_thread"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          String mode = modeParam->getCurrentChoiceName();  // VIOLATION
+          // process based on mode
+      }
+    expected_violations: ["String parameter access on audio thread"]
+    
+  - name: "efficient_snapshot_pattern"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          // Snapshot parameters once
+          const auto freq = freqParam->getRawParameterValue();
+          const auto amp = ampParam->getRawParameterValue();
+          
+          for (int i = 0; i < buffer.getNumSamples(); ++i) {
+              // Use snapshot values
+          }
+      }
+    expected_violations: []
+
+# APVTS Integration Patterns
+integration_patterns:
+  parameter_layout:
+    description: "Optimal parameter tree structure"
+    grouping_strategy: "Group by functionality, not alphabetically"
+    naming_convention: "Consistent parameter ID naming"
+    
+  host_automation:
+    compatibility: "Ensure host automation works correctly"
+    gesture_handling: "Proper begin/end change gestures"
+    notification_timing: "Parameter change notifications"
+    
+  preset_management:
+    state_serialization: "Efficient preset save/load"
+    parameter_versioning: "Handle parameter changes across versions"
+    default_values: "Sensible parameter defaults"
+
+# Output Extensions
+output_extensions:
+  apvts_analysis:
+    parameter_access_patterns:
+      - parameter_id: string
+        access_frequency: integer
+        access_location: enum[processBlock, GUI, both]
+        efficiency_score: number
+        
+    smoothing_analysis:
+      audio_rate_parameters: array[string]
+      smoothed_parameters: array[string]
+      missing_smoothing: array[string]
+      
+    performance_metrics:
+      estimated_parameter_overhead_percent: number
+      cache_miss_predictions: integer
+      rt_safety_score: number
