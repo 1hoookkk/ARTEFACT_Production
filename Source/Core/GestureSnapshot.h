@@ -3,6 +3,7 @@
 #define _USE_MATH_DEFINES
 #include <algorithm>
 #include <cmath>
+#include <atomic>
 
 /**
  * @file GestureSnapshot.h
@@ -131,5 +132,37 @@ namespace GestureMapping {
     }
 
 } // namespace GestureMapping
+
+/**
+ * @brief RT-safe double-buffered gesture snapshot for audio thread access
+ */
+class GestureSnapshotBuffer {
+public:
+    static GestureSnapshotBuffer& instance() noexcept {
+        static GestureSnapshotBuffer g;
+        return g;
+    }
+
+    void pushSnapshot(const GestureSnapshot& s) noexcept {
+        int next = (m_index.load(std::memory_order_relaxed) + 1) & 1;
+        m_slots[next] = s;
+        m_index.store(next, std::memory_order_release);
+    }
+
+    GestureSnapshot getCurrent() const noexcept {
+        int idx = m_index.load(std::memory_order_acquire);
+        return m_slots[idx];
+    }
+
+private:
+    GestureSnapshotBuffer() noexcept {
+        m_slots[0] = GestureSnapshot();
+        m_slots[1] = GestureSnapshot();
+        m_index.store(0, std::memory_order_relaxed);
+    }
+
+    GestureSnapshot m_slots[2];
+    mutable std::atomic<int> m_index{0};
+};
 
 } // namespace SpectralCanvas

@@ -223,6 +223,52 @@ target_compile_definitions(render_test_input PRIVATE
 
 juce_generate_juce_header(render_test_input)
 
+# Simple test harness without EMU/Tube dependencies
+juce_add_console_app(render_test_simple
+    PRODUCT_NAME "SpectralCanvas Simple Test")
+
+target_sources(render_test_simple PRIVATE
+    Source/Tools/render_test_simple.cpp)
+
+target_include_directories(render_test_simple PRIVATE Source)
+
+target_link_libraries(render_test_simple PRIVATE
+    juce::juce_audio_formats
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics)
+
+target_compile_definitions(render_test_simple PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0)
+
+juce_generate_juce_header(render_test_simple)
+
+# Demo recorder with canvas frames
+juce_add_console_app(record_demo
+    PRODUCT_NAME "SpectralCanvas Demo Recorder")
+
+target_sources(record_demo PRIVATE
+    Source/Tools/record_demo.cpp)
+
+target_include_directories(record_demo PRIVATE Source)
+
+target_link_libraries(record_demo PRIVATE
+    juce::juce_audio_formats
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics)
+
+target_compile_definitions(record_demo PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0)
+
+juce_generate_juce_header(record_demo)
+
 # Host Harness tool for editor lifecycle testing
 option(BUILD_HOST_HARNESS "Build the HostHarness tool" OFF)
 if(BUILD_HOST_HARNESS)

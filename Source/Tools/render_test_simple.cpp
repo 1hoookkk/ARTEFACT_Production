@@ -1,16 +1,6 @@
-// render_test_input.cpp
-// Simple headless renderer that runs the EMU->Spectral->Tube chain on an input WAV,
-// injects simulated paint gestures (time + yPos + pressure), and writes an output WAV.
+// render_test_simple.cpp
+// Minimal test of RT-safe SpectralSynthEngineRTStub without EMU/Tube dependencies
 //
-// Usage:
-//   render_test_input <input_wav> <gestures.txt> <output_wav>
-//
-// gestures.txt format (one line per gesture):
-//   <time_seconds> <yPos_0to1> <pressure_0to1>
-// Example:
-//   0.50 0.85 0.7
-//   1.25 0.65 0.9
-
 #include <juce_core/juce_core.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -20,10 +10,7 @@
 #include <string>
 #include <sstream>
 
-#include "../Core/EMUFilter.h"
-#include "../Core/TubeStage.h"
 #include "../Synthesis/SpectralSynthEngineRTStub.h"
-#include "../Core/GestureSnapshot.h"
 
 using namespace juce;
 using namespace scp;
@@ -54,7 +41,7 @@ static bool readGesturesFile(const std::string& path, std::vector<GestureEvent>&
 
 int main (int argc, char* argv[]) {
     if (argc < 4) {
-        std::cerr << "Usage: render_test_input <input_wav> <gestures.txt> <output_wav>\n";
+        std::cerr << "Usage: render_test_simple <input_wav> <gestures.txt> <output_wav>\\n";
         return 1;
     }
 
@@ -70,7 +57,7 @@ int main (int argc, char* argv[]) {
 
     std::unique_ptr<AudioFormatReader> reader(fmtMgr.createReaderFor(File(inputPath)));
     if (!reader) {
-        std::cerr << "Unable to open input WAV: " << inputPath << "\n";
+        std::cerr << "Unable to open input WAV: " << inputPath << "\\n";
         return 2;
     }
 
@@ -82,39 +69,27 @@ int main (int argc, char* argv[]) {
     AudioBuffer<float> buffer(numChannels, (int)totalSamples);
     reader->read(&buffer, 0, (int)totalSamples, 0, true, true);
 
-    // Output buffer (we will process in-place)
+    // Output buffer
     AudioBuffer<float> outBuffer(numChannels, (int)totalSamples);
-    outBuffer.makeCopyOf(buffer); // start with original sample; chain will further process it
+    outBuffer.makeCopyOf(buffer); // start with original
 
     // Load gestures
     std::vector<GestureEvent> gestures;
     if (!readGesturesFile(gesturesPath, gestures)) {
-        std::cerr << "Unable to open gestures file: " << gesturesPath << "\n";
+        std::cerr << "Unable to open gestures file: " << gesturesPath << "\\n";
         return 3;
     }
 
-    // Prepare engine objects - using RT-safe SpectralSynthEngineRTStub
-    EMUFilter emu;
-    TubeStage tube;
-    SpectralSynthEngineRTStub& synth = SpectralSynthEngineRTStub::instance(); // RT-safe singleton
+    // Prepare RT-safe engine
+    SpectralSynthEngineRTStub& synth = SpectralSynthEngineRTStub::instance();
+    synth.prepare(sampleRate, 512);
 
     const int blockSize = 512;
-    emu.prepareToPlay(sampleRate, blockSize);
-    tube.prepare(sampleRate, blockSize);
-    synth.prepare(sampleRate, blockSize);
-
-    // Default control settings (can be changed by editing here)
-    emu.setCutoff(0.7f);        // Normalized cutoff 
-    emu.setResonance(0.3f);     // Moderate resonance
-    tube.setDrive(6.0f);        // EMU-style drive
-    tube.setBias(0.1f);         // Slight asymmetric bias
-
-    // Process in block-sized chunks and inject gestures at scheduled times.
     int totalFrames = outBuffer.getNumSamples();
     int framesProcessed = 0;
     size_t gestureIdx = 0;
 
-    // For safety, convert gesture times to sample indices
+    // Convert gesture times to sample indices
     std::vector<int64_t> gestureSampleIndex;
     gestureSampleIndex.reserve(gestures.size());
     for (auto& g : gestures) {
@@ -122,22 +97,22 @@ int main (int argc, char* argv[]) {
         gestureSampleIndex.push_back(si);
     }
 
+    std::cout << "Processing " << totalFrames << " samples with " << gestures.size() << " gestures...\\n";
+
     while (framesProcessed < totalFrames) {
         int framesThisBlock = std::min(blockSize, totalFrames - framesProcessed);
 
-        // Fire any gestures whose scheduled sample index falls within this block
+        // Fire any gestures for this block
         while (gestureIdx < gestures.size() &&
                gestureSampleIndex[gestureIdx] < framesProcessed + framesThisBlock) {
-            // Create PaintGestureRT for the gesture
             auto& g = gestures[gestureIdx];
             PaintGestureRT paintGesture;
             paintGesture.timeSec = g.timeSec;
-            paintGesture.yPos = g.yPos;      // Y position from gesture
-            paintGesture.pressure = g.pressure; // Pressure from gesture
+            paintGesture.yPos = g.yPos;
+            paintGesture.pressure = g.pressure;
             
-            // Push gesture to RT-safe synth engine
             synth.pushGestureRT(paintGesture);
-            std::cout << "Injected gesture at " << g.timeSec << "s y=" << g.yPos << " p=" << g.pressure << "\n";
+            std::cout << "Injected gesture at " << g.timeSec << "s y=" << g.yPos << " p=" << g.pressure << "\\n";
             ++gestureIdx;
         }
 
@@ -147,17 +122,10 @@ int main (int argc, char* argv[]) {
             tempBuf.copyFrom(ch, 0, outBuffer, ch, framesProcessed, framesThisBlock);
         }
 
-        // 1) EMU pre-sweetening (in-place on tempBuf)
-        AudioSampleBuffer emuBuffer(tempBuf.getArrayOfWritePointers(), numChannels, framesThisBlock);
-        emu.processBlock(emuBuffer);
-
-        // 2) Spectral synth processes paint gestures and generates additive synthesis
+        // Just spectral synth (no EMU/Tube chain)
         synth.processAudioBlock(tempBuf, sampleRate);
 
-        // 3) Tube stage
-        tube.process(tempBuf);
-
-        // Copy tempBuf back to outBuffer at the right offset
+        // Copy back
         for (int ch=0; ch<numChannels; ++ch) {
             outBuffer.copyFrom(ch, framesProcessed, tempBuf, ch, 0, framesThisBlock);
         }
@@ -170,7 +138,7 @@ int main (int argc, char* argv[]) {
     File outFile (outputPath);
     std::unique_ptr<FileOutputStream> outStr (outFile.createOutputStream());
     if (!outStr) {
-        std::cerr << "Unable to create output file: " << outputPath << "\n";
+        std::cerr << "Unable to create output file: " << outputPath << "\\n";
         return 4;
     }
 
@@ -180,15 +148,12 @@ int main (int argc, char* argv[]) {
                                                                         24, // bits
                                                                         {}, 0));
     if (!writer) {
-        std::cerr << "Unable to create WAV writer\n";
+        std::cerr << "Unable to create WAV writer\\n";
         return 5;
     }
 
-    // transfer ownership of stream to writer
     outStr.release();
-
-    // write interleaved
     writer->writeFromAudioSampleBuffer(outBuffer, 0, outBuffer.getNumSamples());
-    std::cout << "Rendered output to: " << outputPath << "\n";
+    std::cout << "Rendered output to: " << outputPath << "\\n";
     return 0;
 }
