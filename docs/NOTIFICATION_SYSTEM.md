@@ -2,6 +2,8 @@
 
 This document provides comprehensive guidance for using the custom Windows hooks and notification system integrated with SpectralCanvas Pro development workflow.
 
+Note: Minimal PowerShell wrappers are included in `scripts/` to streamline common tasks (build/test). Advanced features like Slack/Teams integration are optional and can be enabled later.
+
 ## 📋 Table of Contents
 
 - [Overview](#overview)

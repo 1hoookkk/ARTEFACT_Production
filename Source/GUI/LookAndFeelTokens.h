@@ -99,10 +99,10 @@ inline ThemeTokens y2kWinmapTokens()
     t.realmYellow      = juce::Colour::fromString("#E3C250");   // Electric yellow
     
     // Visual parameters - authentic Y2K feel
-    t.chromeBevelDepth = 7.0f;         // Thick chrome bevels
-    t.specularAlpha = 0.9f;            // Bright specular highlights
-    t.scanlineOpacity = 0.15f;         // Subtle but visible scanlines
-    t.bloomRadius = 0.6f;              // Moderate phosphor bloom
+    t.chromeBevelDepth = 5.0f;         // Slightly softer bevels for readability
+    t.specularAlpha = 0.65f;           // Softer specular highlights
+    t.scanlineOpacity = 0.09f;         // Lighter scanlines for cleaner text
+    t.bloomRadius = 0.5f;              // Slightly reduced bloom
     t.useSpeckleTile = true;           // Enable chrome speckle texture
     
     // Layout parameters

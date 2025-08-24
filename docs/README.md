@@ -3,13 +3,15 @@
 ## 🎯 Quick Navigation
 
 ### For Developers
-- **[Architecture Overview](architecture/)** - Core systems, DSP pipeline, RT-safety
-- **[Agent Collaboration](agents/)** - AI-assisted development workflow
-- **[Operations Guide](operations/)** - Build, test, deployment procedures
+- **[Architecture](architecture/)** - Core systems, DSP pipeline, RT-safety
+- **[DSP Pipeline](architecture/dsp-pipeline.md)** - End-to-end paint→audio flow
+- **[RT-Safety](architecture/rt-safety.md)** - Real-time constraints and patterns
+- **[Spectral Mapping](architecture/spectral-mapping.md)** - Y→frequency mapping
+- **[Operations](operations/)** - Build, test, deploy procedures
 
 ### For Users
 - **[User Guide](UI_COMPONENTS.md)** - Interface and feature documentation
-- **[Installation](ARCHIVE_POLICY.md)** - Setup and configuration
+- **[Archive Policy](ARCHIVE_POLICY.md)** - Repo housekeeping and archives
 
 ### For Contributors  
 - **[Session Notes](session-notes/)** - Development history and decisions
@@ -67,10 +69,10 @@ docs/
 4. Explore [Agent System](agents/) for AI-assisted development
 
 ### For Quick Tasks
-1. Use `*help` to see available BMad commands
-2. Transform into specialist agent: `*agent <name>`
-3. Execute specific tasks: `*task <task-name>`
-4. Generate reports: `*report` or `*doc-out`
+1. Build: `cmake -S . -B build -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo`
+2. Compile: `cmake --build build --config RelWithDebInfo`
+3. Test: `ctest --test-dir build -C RelWithDebInfo --output-on-failure`
+4. Optional wrappers (Windows): `scripts/build-and-notify.ps1`, `scripts/test-and-notify.ps1`
 
 ## 🔗 External Resources
 

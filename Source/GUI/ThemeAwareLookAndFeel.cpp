@@ -130,24 +130,173 @@ void ThemeAwareLookAndFeel::drawButtonBackground(Graphics& g, Button& button,
 
 void ThemeAwareLookAndFeel::drawLabel(Graphics& g, Label& label)
 {
-    g.setColour(tokens_.labelText);
     g.setFont(getLabelFont(label));
-    
-    Rectangle<int> textArea = label.getLocalBounds();
-    
-    // Add subtle shadow for depth
-    if (label.isEnabled())
-    {
-        g.setColour(tokens_.chromeShadow.withAlpha(0.3f));
-        g.drawFittedText(label.getText(), textArea.translated(1, 1),
-                        label.getJustificationType(), jmax(1, (int)(textArea.getHeight() / 16)));
-    }
-    
+
+    auto textArea = label.getLocalBounds();
+    auto just = label.getJustificationType();
+
+    // Subtle black border (outline) + soft shadow, then main text
+    const Colour outlineCol = Colours::black.withAlpha(0.50f);
+    const Colour shadowCol  = tokens_.chromeShadow.withAlpha(0.35f);
+    const Colour mainCol    = label.isEnabled() ? tokens_.labelText : tokens_.labelText.withAlpha(0.5f);
+
+    // Shadow (1px down-right)
+    g.setColour(shadowCol);
+    g.drawFittedText(label.getText(), textArea.translated(1, 1), just, jmax(1, (int)(textArea.getHeight() / 16)));
+
+    // Outline (4-neighbour 1px)
+    g.setColour(outlineCol);
+    g.drawFittedText(label.getText(), textArea.translated(-1, 0), just, jmax(1, (int)(textArea.getHeight() / 16)));
+    g.drawFittedText(label.getText(), textArea.translated(1, 0),  just, jmax(1, (int)(textArea.getHeight() / 16)));
+    g.drawFittedText(label.getText(), textArea.translated(0, -1), just, jmax(1, (int)(textArea.getHeight() / 16)));
+    g.drawFittedText(label.getText(), textArea.translated(0, 1),  just, jmax(1, (int)(textArea.getHeight() / 16)));
+
     // Main text
-    g.setColour(label.isEnabled() ? tokens_.labelText : tokens_.labelText.withAlpha(0.5f));
-    g.drawFittedText(label.getText(), textArea,
-                     label.getJustificationType(), jmax(1, (int)(textArea.getHeight() / 16)));
+    g.setColour(mainCol);
+    g.drawFittedText(label.getText(), textArea, just, jmax(1, (int)(textArea.getHeight() / 16)));
 }
+
+void ThemeAwareLookAndFeel::drawButtonText(Graphics& g, TextButton& button,
+                        bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown)
+{
+    ignoreUnused(shouldDrawButtonAsHighlighted, shouldDrawButtonAsDown);
+    auto text  = button.getButtonText();
+    if (text.isEmpty()) return;
+
+    g.setFont(getCondensedFont(jmax(11.0f, button.getHeight() * 0.45f)));
+
+    auto bounds = button.getLocalBounds().toFloat();
+    auto r = bounds.reduced(6.0f).toNearestInt();
+    auto just = Justification::centred;
+
+    const Colour outlineCol = Colours::black.withAlpha(0.55f);
+    const Colour shadowCol  = tokens_.chromeShadow.withAlpha(0.35f);
+    const Colour mainCol    = tokens_.labelText;
+
+    // Shadow
+    g.setColour(shadowCol);
+    g.drawText(text, r.translated(1,1), just);
+    // 1px outline
+    g.setColour(outlineCol);
+    g.drawText(text, r.translated(-1,0), just);
+    g.drawText(text, r.translated(1,0),  just);
+    g.drawText(text, r.translated(0,-1), just);
+    g.drawText(text, r.translated(0,1),  just);
+    // Main
+    g.setColour(mainCol);
+    g.drawText(text, r, just);
+}
+
+// Typography
+Font ThemeAwareLookAndFeel::getLabelFont(Label&)
+{
+    // Prefer MetaSynth-style pixel/mono fonts if available
+    return getPixelFont(12.0f);
+}
+
+Font ThemeAwareLookAndFeel::getTextButtonFont(TextButton&, int)
+{
+    return getCondensedFont(13.0f);
+}
+
+Font ThemeAwareLookAndFeel::getPopupMenuFont()
+{
+    return getCondensedFont(13.0f);
+}
+
+Font ThemeAwareLookAndFeel::getComboBoxFont(ComboBox&)
+{
+    return getCondensedFont(13.0f);
+}
+
+Font ThemeAwareLookAndFeel::getPixelFont(float size) const
+{
+    if (!pixelFont_)
+    {
+        // Candidate list: user may have a MetaSynth-like font installed
+        StringArray candidates {
+            "MetaSynth", "MetaSynth Sans", "Pixel Operator", "VT323",
+            "Press Start 2P", "Fixedsys", "Terminal", "Lucida Console",
+            "Courier New"
+        };
+        auto installed = Font::findAllTypefaceNames();
+        String chosen;
+        for (auto& name : candidates)
+        {
+            if (installed.contains(name)) { chosen = name; break; }
+        }
+        if (chosen.isNotEmpty())
+            pixelFont_ = std::make_unique<Font>(chosen, size, Font::plain);
+        else
+            pixelFont_ = std::make_unique<Font>(Font::getDefaultMonospacedFontName(), size, Font::plain);
+
+        // Slightly tighter spacing to evoke MetaSynth UI
+        pixelFont_->setHeight(size);
+        pixelFont_->setExtraKerningFactor(-0.02f);
+        pixelFont_->setHorizontalScale(0.98f);
+    }
+    else
+    {
+        pixelFont_->setHeight(size);
+    }
+    return *pixelFont_;
+}
+
+Font ThemeAwareLookAndFeel::getCondensedFont(float size) const
+{
+    if (!condensedFont_)
+    {
+        StringArray candidates { "Bahnschrift SemiCondensed", "Segoe UI", "Arial Narrow", "Arial" };
+        auto installed = Font::findAllTypefaceNames();
+        String chosen;
+        for (auto& name : candidates)
+        {
+            if (installed.contains(name)) { chosen = name; break; }
+        }
+        if (chosen.isNotEmpty())
+            condensedFont_ = std::make_unique<Font>(chosen, size, Font::plain);
+        else
+            condensedFont_ = std::make_unique<Font>(Font::getDefaultSansSerifFontName(), size, Font::plain);
+        condensedFont_->setHeight(size);
+        condensedFont_->setHorizontalScale(0.96f);
+    }
+    else
+    {
+        condensedFont_->setHeight(size);
+    }
+    return *condensedFont_;
+}
+
+void ThemeAwareLookAndFeel::drawPixelFont(Graphics& g, const String& text,
+                       const Rectangle<float>& bounds,
+                       Justification justification)
+{
+    // MetaSynth-like pixel font with subtle outline and shadow
+    g.setFont(getPixelFont(jmax(10.0f, bounds.getHeight() * 0.9f)));
+
+    Rectangle<int> r = bounds.toNearestInt();
+    const Colour outlineCol = Colours::black.withAlpha(0.55f);
+    const Colour shadowCol  = tokens_.chromeShadow.withAlpha(0.35f);
+    const Colour mainCol    = tokens_.hudText;
+
+    // Soft shadow
+    g.setColour(shadowCol);
+    g.drawText(text, r.translated(1, 1), justification);
+
+    // 1px outline
+    g.setColour(outlineCol);
+    g.drawText(text, r.translated(-1, 0), justification);
+    g.drawText(text, r.translated(1, 0),  justification);
+    g.drawText(text, r.translated(0, -1), justification);
+    g.drawText(text, r.translated(0, 1),  justification);
+
+    // Main fill
+    g.setColour(mainCol);
+    g.drawText(text, r, justification);
+}
+
+Colour ThemeAwareLookAndFeel::getChromeHighlight() const { return tokens_.chromeHighlight; }
+Colour ThemeAwareLookAndFeel::getChromeShadow() const { return tokens_.chromeShadow; }
 
 void ThemeAwareLookAndFeel::drawComboBox(Graphics& g, int width, int height, bool isButtonDown,
                                         int buttonX, int buttonY, int buttonW, int buttonH,

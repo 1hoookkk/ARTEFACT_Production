@@ -82,7 +82,16 @@
       "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production\\build'' -Recurse -Include ''*.exe'' | Where-Object { $_ame -match ''render_test_input'' } | Select-Object FullName, LastWriteTime\")",
       "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production\\build'' -Recurse -Include ''*render_test_input*'' | Select-Object FullName, LastWriteTime\")",
       "Bash(\"C:\\ARTEFACT_Production\\build\\render_test_input_artefacts\\RelWithDebInfo\\render_test_input.exe\" \"C:\\ARTEFACT_Production\\build\\_deps\\juce-src\\examples\\Assets\\cassette_recorder.wav\" \"example_gestures.txt\" \"test_output.wav\")",
-      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production'' -Recurse -Include ''*.obj'' | Remove-Item -Force\")"
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production'' -Recurse -Include ''*.obj'' | Remove-Item -Force\")",
+      "Bash(git commit:*)",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''build'' -Recurse -Include ''*.exe'', ''*.vst3'' | Where-Object { $_astWriteTime -gt (Get-Date).AddMinutes(-10) } | Select-Object FullName, LastWriteTime\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''build'' -Recurse -Include ''*.exe'', ''*.vst3'' | Where-Object { $_LastWriteTime -gt (Get-Date).AddMinutes(-10) } | Select-Object FullName, LastWriteTime\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production\\build'' -Recurse -Name ''*.exe''\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production\\build'' -Recurse -Include ''*.exe'', ''*.vst3'' | Where-Object { $_LastWriteTime -gt (Get-Date).AddMinutes(-5) } | Select-Object FullName, LastWriteTime\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''C:\\ARTEFACT_Production\\build'' -Recurse -Include ''*.exe'', ''*.vst3'' | Where-Object { $_LastWriteTime -gt (Get-Date).AddMinutes(-2) } | Select-Object FullName, LastWriteTime\")",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(timeout 60 cmake --build build --config RelWithDebInfo --target render_test_input)"
     ],
     "deny": [],
     "ask": [],
