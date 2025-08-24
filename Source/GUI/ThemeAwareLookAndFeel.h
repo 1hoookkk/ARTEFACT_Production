@@ -57,7 +57,7 @@ public:
                          float depth, float cornerRadius = 6.0f);
 
     void drawLEDIndicator(juce::Graphics& g, const juce::Rectangle<float>& bounds,
-                          juce::Colour colour, bool isOn, float intensity = 1.0f);
+                          juce::Colour colour, bool isOn, float intensity = 0.8f);
 
     void drawPixelFont(juce::Graphics& g, const juce::String& text,
                        const juce::Rectangle<float>& bounds, 

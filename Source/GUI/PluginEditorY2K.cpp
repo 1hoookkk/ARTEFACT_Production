@@ -105,12 +105,11 @@ void PluginEditorY2K::createControls()
     auto dbgBtn = std::make_unique<TextButton>("DBG Push");
     dbgBtn->onClick = [this]()
     {
-        #include "../Core/DebugGlobalQueue.h"
-        if (dbg::globalPaintQueue)
+        if (auto* paintQueue = audioProcessor_.getPaintQueue())
         {
             PaintEvent g;
             g.nx = 0.5f; g.ny = 0.5f; g.pressure = 1.0f; g.flags = 1; g.color = 0;
-            dbg::globalPaintQueue->push(g);
+            paintQueue->push(g);
             #if defined(ENABLE_DEBUG_LOGS)
             juce::Logger::writeToLog("DBG: editor pushed artificial paint gesture");
             #endif

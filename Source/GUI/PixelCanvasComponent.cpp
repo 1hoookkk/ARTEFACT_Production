@@ -267,14 +267,7 @@ void PixelCanvasComponent::pushPaintGestureToQueue(float normalizedX, float norm
     juce::Logger::writeToLog("DBG_UI: push gesture x=" + juce::String(normalizedX) + " y=" + juce::String(normalizedY) + " p=" + juce::String(pressure));
     #endif
     
-    // Use global queue shim for testing
-    #include "../Core/DebugGlobalQueue.h"
-    if (dbg::globalPaintQueue && !dbg::globalPaintQueue->push(event))
-    {
-        // Queue full - could log this in debug builds
-        DBG("Paint queue full - dropping gesture");
-    }
-    else if (paintQueue_ && !paintQueue_->push(event))
+    if (paintQueue_ && !paintQueue_->push(event))
     {
         // Fallback to original queue
         DBG("Paint queue full - dropping gesture");

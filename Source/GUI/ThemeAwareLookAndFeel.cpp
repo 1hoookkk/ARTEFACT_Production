@@ -73,7 +73,7 @@ void ThemeAwareLookAndFeel::drawRotarySlider(Graphics& g, int x, int y, int widt
     indicatorPath.lineTo(indicatorX, indicatorY);
     
     g.setColour(tokens_.realmBlue);
-    g.strokePath(indicatorPath, PathStrokeType(3.5f, PathStrokeType::beveled, PathStrokeType::rounded));
+    g.strokePath(indicatorPath, PathStrokeType(3.0f, PathStrokeType::beveled, PathStrokeType::rounded));
 
     // LED pip indicator - amber glow
     const float pipRadius = jmax(3.0f, width * 0.04f);
@@ -82,7 +82,7 @@ void ThemeAwareLookAndFeel::drawRotarySlider(Graphics& g, int x, int y, int widt
     
     // LED pip with glow effect
     drawLEDIndicator(g, Rectangle<float>(pipX - pipRadius, pipY - pipRadius, pipRadius * 2, pipRadius * 2),
-                     tokens_.ledAmber, true, 0.95f);
+                     tokens_.ledAmber, true, 0.85f);
 }
 
 void ThemeAwareLookAndFeel::drawButtonBackground(Graphics& g, Button& button,

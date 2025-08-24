@@ -4,7 +4,6 @@
 #include "GUI/PluginEditorMVP.h"
 #include "GUI/PluginEditorVector.h"
 #include "GUI/PluginEditorY2K.h"
-#include "DebugGlobalQueue.h"
 
 //==============================================================================
 // Constructor and Destructor
@@ -91,10 +90,6 @@ void ARTEFACTAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
 {
     currentSampleRate = sampleRate;
     
-    // Initialize debug global queue shim
-    static SpectralPaintQueue localStaticQueue(4096); // static storage lifetime
-    if (dbg::globalPaintQueue == nullptr)
-        dbg::globalPaintQueue = &localStaticQueue;
     
     // Prepare all processors
     forgeProcessor.prepareToPlay(sampleRate, samplesPerBlock);
@@ -1059,7 +1054,7 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     #if !defined(NDEBUG)
     static int __dbg_pop_counter = 0;
     #endif
-    while (dbg::globalPaintQueue->pop(paintEvent))
+    while (paintQueue.pop(paintEvent))
     {
         #if !defined(NDEBUG)
         if (++__dbg_pop_counter >= 1)

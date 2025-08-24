@@ -450,3 +450,28 @@ if(SC_LEGACY)
     message(STATUS "SC_LEGACY=ON: Legacy/archived modules may be added explicitly here.")
     # Intentionally empty by default to avoid accidental inclusion.
 endif()
+# Optional embedded assets (fonts, images) for consistent typography/branding
+# Place TTF/OTF files under Assets/fonts/ to embed. Build will still work without them.
+set(SC_ASSETS_FONT_DIR "${CMAKE_SOURCE_DIR}/Assets/fonts")
+if(EXISTS "${SC_ASSETS_FONT_DIR}")
+    file(GLOB SC_FONT_FILES
+        "${SC_ASSETS_FONT_DIR}/*.ttf"
+        "${SC_ASSETS_FONT_DIR}/*.otf")
+    if(SC_FONT_FILES)
+        message(STATUS "Embedding fonts: ${SC_FONT_FILES}")
+        juce_add_binary_data(EmbeddedAssets SOURCES ${SC_FONT_FILES})
+        target_link_libraries(SpectralCanvas PRIVATE EmbeddedAssets)
+        target_compile_definitions(SpectralCanvas PRIVATE SC_EMBED_FONTS=1)
+        # Link to the standalone target too, if generated
+        if(TARGET SpectralCanvas_Standalone)
+            target_link_libraries(SpectralCanvas_Standalone PRIVATE EmbeddedAssets)
+            target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_EMBED_FONTS=1)
+        endif()
+    else()
+        message(STATUS "No fonts found in Assets/fonts (skipping embedded assets)")
+        target_compile_definitions(SpectralCanvas PRIVATE SC_EMBED_FONTS=0)
+        if(TARGET SpectralCanvas_Standalone)
+            target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_EMBED_FONTS=0)
+        endif()
+    endif()
+endif()
