@@ -159,6 +159,11 @@ void PluginEditorY2K::createLeftControlPanel()
     testToneButton_->setTooltip("Enable test tone for audio pipeline debugging");
     leftControlPanel_->addAndMakeVisible(*testToneButton_);
     
+    // Secret sauce bypass for A/B testing
+    bypassSecretSauceButton_ = createToggleButton("Bypass Secret Sauce");
+    bypassSecretSauceButton_->setTooltip("A/B test raw synthesis vs processed sound");
+    leftControlPanel_->addAndMakeVisible(*bypassSecretSauceButton_);
+    
     // Wire up controls to engine
     gainSlider_->onValueChange = [this]()
     {
@@ -258,14 +263,13 @@ void PluginEditorY2K::createBottomPanel()
 
 void PluginEditorY2K::setupParameterAttachments()
 {
-    // This would connect to APVTS parameters when available
-    // For now, we're using direct control connections
+    // Set up parameter attachments for APVTS controls
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
     
-    // Example of how APVTS attachments would work:
-    // sliderAttachments_.emplace_back(
-    //     std::make_unique<SliderParameterAttachment>(
-    //         *audioProcessor_.getParameters().getParameter("gain"), 
-    //         *gainSlider_));
+    // Bypass Secret Sauce toggle
+    buttonAttachments_.emplace_back(
+        std::make_unique<ButtonAttachment>(
+            audioProcessor_.getAPVTS(), "bypassSecretSauce", *bypassSecretSauceButton_));
 }
 
 void PluginEditorY2K::layoutComponents()
@@ -296,6 +300,12 @@ void PluginEditorY2K::layoutComponents()
     if (testToneButton_)
     {
         testToneButton_->setBounds(leftBounds.removeFromTop(30));
+        leftBounds.removeFromTop(controlSpacing);
+    }
+    
+    if (bypassSecretSauceButton_)
+    {
+        bypassSecretSauceButton_->setBounds(leftBounds.removeFromTop(30));
         leftBounds.removeFromTop(controlSpacing);
     }
     

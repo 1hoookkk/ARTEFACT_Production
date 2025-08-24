@@ -123,6 +123,9 @@ private:
 
     enum class ProcessingMode { Forge = 0, Canvas, Hybrid };
     ProcessingMode currentMode = ProcessingMode::Canvas;
+    
+    // Dev/debug flags
+    std::atomic<bool> bypassSecretSauce{false};
 
     // Thread-safe command queue
     CommandQueue<512> commandQueue;  // Increased size for better performance

@@ -24,6 +24,7 @@ ARTEFACTAudioProcessor::ARTEFACTAudioProcessor()
     apvts.addParameterListener("masterGain", this);
     apvts.addParameterListener("paintActive", this);
     apvts.addParameterListener("processingMode", this);
+    apvts.addParameterListener("bypassSecretSauce", this);
     
     // Paint engine section
     apvts.addParameterListener("brushSize", this);
@@ -161,6 +162,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARTEFACTAudioProcessor::crea
     parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
         "processingMode", "Processing Mode", 
         juce::StringArray{"Forge", "Canvas", "Hybrid"}, 1));
+    
+    // DEBUG/DEV SECTION
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "bypassSecretSauce", "Bypass Secret Sauce", false));
     
     //==============================================================================
     // PAINT ENGINE SECTION (8 parameters)
@@ -357,6 +362,11 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
         bool shouldBeActive = (currentMode == ProcessingMode::Canvas || 
                               currentMode == ProcessingMode::Hybrid);
         paintEngine.setActive(shouldBeActive);
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "bypassSecretSauce")
+    {
+        bypassSecretSauce.store(newValue > 0.5f);
         // RT-safe: No logging from parameter listeners
     }
     
@@ -1072,21 +1082,23 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     switch (currentMode)
     {
     case ProcessingMode::Canvas:
-        // Canvas mode: Always-on character chain EMU → Spectral → Tube
-        // This implements the "impossible to bypass" vintage analog processing philosophy
+        // Canvas mode: Spectral synthesis with optional secret sauce processing
         
-        // Step 1: EMU pre-sweetening (trims >14kHz fizz, adds signature mid-bite)
-        emuFilter.processBlock(buffer);
-        
-        // Step 2: Paint-driven spectral synthesis (with harmonic quantization)
+        // Step 1: Paint-driven spectral synthesis (core functionality)
         paintEngine.processBlock(buffer);
         SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
         
-        // Step 2.5: Also process SpectralSynthEngineStub for test tone and debugging
+        // Step 2: Also process SpectralSynthEngineStub for test tone and debugging
         spectralSynthEngineStub.processBlock(buffer, &paintQueue);
         
-        // Step 3: Tube stage final glue (vintage compression, 2nd/3rd harmonics align)  
-        tubeStage.process(buffer);
+        // Step 3: Secret sauce processing (A/B testable)
+        if (!bypassSecretSauce.load()) {
+            // EMU pre-sweetening (trims >14kHz fizz, adds signature mid-bite)
+            emuFilter.processBlock(buffer);
+            
+            // Tube stage final glue (vintage compression, 2nd/3rd harmonics align)  
+            tubeStage.process(buffer);
+        }
         break;
         
     case ProcessingMode::Forge:

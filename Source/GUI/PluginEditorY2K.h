@@ -61,6 +61,7 @@ private:
     std::unique_ptr<juce::Slider> freqMinSlider_;
     std::unique_ptr<juce::Slider> freqMaxSlider_;
     std::unique_ptr<juce::ToggleButton> testToneButton_;
+    std::unique_ptr<juce::ToggleButton> bypassSecretSauceButton_;
     std::unique_ptr<juce::TextButton> clearButton_;
     std::unique_ptr<juce::ToggleButton> previewButton_;
     
