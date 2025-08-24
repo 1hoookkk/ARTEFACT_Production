@@ -111,7 +111,9 @@ void PluginEditorY2K::createControls()
             PaintEvent g;
             g.nx = 0.5f; g.ny = 0.5f; g.pressure = 1.0f; g.flags = 1; g.color = 0;
             dbg::globalPaintQueue->push(g);
+            #if defined(ENABLE_DEBUG_LOGS)
             juce::Logger::writeToLog("DBG: editor pushed artificial paint gesture");
+            #endif
         }
     };
     dbgBtn->setBounds(8, 8, 92, 28);

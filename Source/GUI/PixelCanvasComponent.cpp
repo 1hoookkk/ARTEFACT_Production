@@ -263,7 +263,7 @@ void PixelCanvasComponent::pushPaintGestureToQueue(float normalizedX, float norm
     PaintEvent event(normalizedX, normalizedY, pressure, flags, 0);
     
     // DEBUG: log UI push
-    #if !defined(NDEBUG)
+    #if defined(ENABLE_DEBUG_LOGS)
     juce::Logger::writeToLog("DBG_UI: push gesture x=" + juce::String(normalizedX) + " y=" + juce::String(normalizedY) + " p=" + juce::String(pressure));
     #endif
     

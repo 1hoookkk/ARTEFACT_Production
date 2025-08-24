@@ -915,9 +915,11 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     if (++__dbg_pb_cnt == 512) // throttle logs
     {
         __dbg_pb_cnt = 0;
+        #if defined(ENABLE_DEBUG_LOGS)
         juce::Logger::writeToLog("DBG: processBlock() heartbeat sr=" + juce::String(getSampleRate()) +
                                  " ch=" + juce::String(buffer.getNumChannels()) +
                                  " samples=" + juce::String(buffer.getNumSamples()));
+        #endif
     }
 
     // DEBUG TONE: removed for production. To re-enable for local debugging define ENABLE_SANDBOX_TONE
@@ -1063,8 +1065,10 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         if (++__dbg_pop_counter >= 1)
         {
             __dbg_pop_counter = 0;
+            #if defined(ENABLE_DEBUG_LOGS)
             juce::Logger::writeToLog("DBG_AUDIO: popped gesture x=" + juce::String(paintEvent.nx) +
                                      " y=" + juce::String(paintEvent.ny) + " p=" + juce::String(paintEvent.pressure));
+            #endif
         }
         #endif
         
