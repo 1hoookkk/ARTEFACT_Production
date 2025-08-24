@@ -412,7 +412,7 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == "oscillatorCount")
     {
         int count = static_cast<int>(newValue);
-        // spectralSynthEngine.setOscillatorCount(count); // To be implemented
+        SpectralSynthEngine::instance().setNumPartials(count);
         // RT-safe: No logging from parameter listeners
     }
     else if (parameterID == "spectralMode")
@@ -444,12 +444,8 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == "topNBands")
     {
         int bandCount = static_cast<int>(newValue);
-        SpectralSynthEngine::instance().setTopNBands(bandCount);
-<<<<<<< HEAD
-        DBG("Top-N bands changed to: " << bandCount);
-=======
+        // SpectralSynthEngine::instance().setTopNBands(bandCount); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     
     //==============================================================================
@@ -521,57 +517,33 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     
     else if (parameterID == "maskBlend")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue);
-<<<<<<< HEAD
-        DBG("Mask blend changed to: " << (newValue * 100.0f) << "%");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "maskStrength")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue);
-<<<<<<< HEAD
-        DBG("Mask strength changed to: " << newValue);
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherTime")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue);
-<<<<<<< HEAD
-        DBG("Feather time changed to: " << (newValue * 1000.0f) << "ms");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherFreq")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue);
-<<<<<<< HEAD
-        DBG("Feather frequency changed to: " << newValue << "Hz");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "threshold")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue);
-<<<<<<< HEAD
-        DBG("Mask threshold changed to: " << newValue << "dB");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "protectHarmonics")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f);
-<<<<<<< HEAD
-        DBG("Protect harmonics changed to: " << (newValue > 0.5f ? "ON" : "OFF"));
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
 }
 
@@ -830,44 +802,31 @@ void ARTEFACTAudioProcessor::processPaintCommand(const Command& cmd)
         // Send to both PaintEngine and SpectralSynthEngine for MetaSynth functionality
         paintEngine.beginStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure, cmd.color);
         
-        // Create PaintData for SpectralSynthEngine with MetaSynth mapping
+        // Send to SpectralSynthEngine via RT-safe queue
         {
-            SpectralSynthEngine::PaintData paintData;
-            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);  // Normalize assuming 8-second canvas
-            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f); // Normalize assuming 100-unit frequency range
-            paintData.pressure = cmd.pressure;
-            paintData.velocity = 0.5f;  // Default velocity
-            paintData.color = cmd.color;
-            paintData.timestamp = juce::Time::getMillisecondCounter();
+            PaintEvent paintEvent;
+            paintEvent.nx = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
+            paintEvent.ny = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
+            paintEvent.pressure = cmd.pressure;
+            paintEvent.flags = kStrokeStart;
+            paintEvent.color = cmd.color.getARGB();
             
-            // Calculate derived parameters (this will be done by the engine)
-            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
-            paintData.amplitude = cmd.pressure;
-            paintData.panPosition = 0.0f;  // Will be calculated from color
-            paintData.synthMode = 0;
-            
-            SpectralSynthEngine::instance().processPaintStroke(paintData);
+            SpectralSynthEngine::instance().pushGestureRT(paintEvent);
         }
         break;
     case PaintCommandID::UpdateStroke:
         paintEngine.updateStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure);
         
-        // Also send to SpectralSynthEngine for continuous MetaSynth processing
+        // Also send to SpectralSynthEngine via RT-safe queue
         {
-            SpectralSynthEngine::PaintData paintData;
-            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
-            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
-            paintData.pressure = cmd.pressure;
-            paintData.velocity = 0.7f;  // Higher velocity for updates
-            paintData.color = cmd.color;
-            paintData.timestamp = juce::Time::getMillisecondCounter();
+            PaintEvent paintEvent;
+            paintEvent.nx = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
+            paintEvent.ny = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
+            paintEvent.pressure = cmd.pressure;
+            paintEvent.flags = kStrokeMove;
+            paintEvent.color = cmd.color.getARGB();
             
-            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
-            paintData.amplitude = cmd.pressure;
-            paintData.panPosition = 0.0f;
-            paintData.synthMode = 0;
-            
-            SpectralSynthEngine::instance().processPaintStroke(paintData);
+            SpectralSynthEngine::instance().pushGestureRT(paintEvent);
         }
         break;
     case PaintCommandID::EndStroke:
@@ -939,17 +898,7 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 {
     juce::ScopedNoDenormals noDenormals;
     
-    // ========== DEBUG: processBlock heartbeat & unconditional test tone ==========
-    static int __dbg_pb_cnt = 0;
-    if (++__dbg_pb_cnt == 512) // throttle logs
-    {
-        __dbg_pb_cnt = 0;
-        #if defined(ENABLE_DEBUG_LOGS)
-        juce::Logger::writeToLog("DBG: processBlock() heartbeat sr=" + juce::String(getSampleRate()) +
-                                 " ch=" + juce::String(buffer.getNumChannels()) +
-                                 " samples=" + juce::String(buffer.getNumSamples()));
-        #endif
-    }
+    // DEBUG heartbeat removed from audio thread: no logging in processBlock
 
     // Audio routing: Use SpectralSynthEngine when initialized, fallback to debug tone
     if (SpectralSynthEngine::instance().isInitialized())
@@ -1096,21 +1045,9 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     //  - PaintEngine for visual/masking updates
     //  - SpectralSynthEngine for additive synthesis
     PaintEvent paintEvent;
-    #if !defined(NDEBUG)
-    static int __dbg_pop_counter = 0;
-    #endif
     while (paintQueue.pop(paintEvent))
     {
-        #if !defined(NDEBUG)
-        if (++__dbg_pop_counter >= 1)
-        {
-            __dbg_pop_counter = 0;
-            #if defined(ENABLE_DEBUG_LOGS)
-            juce::Logger::writeToLog("DBG_AUDIO: popped gesture x=" + juce::String(paintEvent.nx) +
-                                     " y=" + juce::String(paintEvent.ny) + " p=" + juce::String(paintEvent.pressure));
-            #endif
-        }
-        #endif
+        // No logging on audio thread
         
         // Map Y coordinate to frequency for perceptible demo
         float y = paintEvent.ny; // ensure normalized 0..1
@@ -1144,6 +1081,9 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // Step 2: Paint-driven spectral synthesis (with harmonic quantization)
         paintEngine.processBlock(buffer);
         SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
+        
+        // Step 2.5: Also process SpectralSynthEngineStub for test tone and debugging
+        spectralSynthEngineStub.processBlock(buffer, &paintQueue);
         
         // Step 3: Tube stage final glue (vintage compression, 2nd/3rd harmonics align)  
         tubeStage.process(buffer);

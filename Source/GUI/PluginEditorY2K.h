@@ -1,7 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
-#include "ThemeAwareLookAndFeel.h"
-#include "PixelCanvasComponent.h"
+#include "ThemeAwareLookAndFeelStub.h"
+#include "PixelCanvasComponentStub.h"
 #include "LookAndFeelTokens.h"
 
 // Forward declarations

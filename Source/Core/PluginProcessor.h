@@ -53,7 +53,7 @@ public:
     ForgeProcessor& getForgeProcessor() { return forgeProcessor; }
     PaintEngine& getPaintEngine() { return paintEngine; }
     SampleMaskingEngine& getSampleMaskingEngine() { return sampleMaskingEngine; }
-    SpectralSynthEngine& getSpectralSynthEngine() { return spectralSynthEngine; }
+    SpectralSynthEngine& getSpectralSynthEngine() { return SpectralSynthEngine::instance(); }
     SpectralSynthEngineStub* getSpectralSynthEngineStub() { return &spectralSynthEngineStub; }
     AudioRecorder& getAudioRecorder() { return audioRecorder; }
     
@@ -112,7 +112,7 @@ private:
     ForgeProcessor  forgeProcessor;
     PaintEngine paintEngine;
     SampleMaskingEngine sampleMaskingEngine;
-    SpectralSynthEngine spectralSynthEngine;
+    // SpectralSynthEngine spectralSynthEngine; // Using singleton instance instead
     SpectralSynthEngineStub spectralSynthEngineStub;
     ParameterBridge parameterBridge;
     AudioRecorder audioRecorder;

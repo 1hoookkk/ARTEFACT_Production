@@ -56,6 +56,7 @@ target_sources(SpectralCanvas PRIVATE
     # Source/CanvasComponent.cpp  # LEGACY: Excluded - references old SpectralSynthEngine APIs
     Source/Core/PaintEngine.cpp
     Source/Core/SpectralSynthEngine.cpp
+    Source/Core/SpectralSynthEngineStub.cpp
     Source/Core/SampleMaskingEngine.cpp
     Source/Core/CDPSpectralEngine.cpp
     Source/Core/MaskSnapshot.cpp
@@ -86,6 +87,7 @@ target_sources(SpectralCanvas PRIVATE
     Source/dsp/VoicePool.h
     Source/dsp/SpectralSynthEngine.h
     Source/Core/MorphFilter.cpp
+    Source/Core/EMUFilter.cpp
     Source/Core/EMURomplerEngine.cpp
     Source/Core/TapeSpeed.cpp
     Source/Core/StereoWidth.cpp
@@ -122,6 +124,9 @@ target_sources(SpectralCanvas PRIVATE
     Source/GUI/Skin/LogoComponent.cpp
     # MVP Minimal Editor
     Source/GUI/PluginEditorMVP.cpp
+    Source/GUI/PluginEditorY2K.cpp
+    # Source/GUI/ThemeAwareLookAndFeel.cpp  # Temporarily excluded - duplicate method definitions
+    # Source/GUI/PixelCanvasComponent.cpp   # Temporarily excluded - dependency on ThemeAwareLookAndFeel
     
     # Essential UI Components (fix for paint-to-audio interface)
     # Source/GUI/PaintControlPanel.cpp  # LEGACY: Excluded - potential API compatibility issues
@@ -146,6 +151,12 @@ target_sources(SpectralCanvas PRIVATE
     
     # Determinism utilities
     Source/Util/Determinism.cpp)
+
+# Exclude the legacy editor from builds (keep Y2K editor only)
+set_source_files_properties(Source/GUI/PluginEditor.cpp PROPERTIES
+    HEADER_FILE_ONLY TRUE
+    EXCLUDE_FROM_ALL TRUE
+    EXCLUDE_FROM_DEFAULT_BUILD TRUE)
     
 message(STATUS "Building SpectralCanvas Pro VST3 Plugin with complete paint-to-audio system")
 
@@ -161,9 +172,7 @@ target_compile_definitions(SpectralCanvas PRIVATE
     JUCE_MODULE_AVAILABLE_juce_gui_basics=1
     JUCE_DISABLE_JUCE_VERSION_PRINTING=1)
 
-# 🚨 FORCE MVP UI MODE - NO AMBIGUITY
-target_compile_definitions(SpectralCanvas PRIVATE SC_MVP_UI=1)
-target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_MVP_UI=1)
+# Default to full Y2K editor (no MVP flag forced)
 
 # Legacy build control
 target_compile_definitions(SpectralCanvas PRIVATE BUILD_LEGACY=$<BOOL:${BUILD_LEGACY}>)
@@ -188,8 +197,7 @@ target_link_libraries(SpectralCanvas PRIVATE
     juce::juce_dsp                  # DSP utilities (FFT, etc.)
     juce::juce_events               # Event handling
     juce::juce_graphics             # Drawing
-    juce::juce_gui_basics           # UI components
-    juce::juce_gui_extra)           # Advanced UI components
+    juce::juce_gui_basics)          # UI components
 
 # Generate JUCE header
 juce_generate_juce_header(SpectralCanvas)

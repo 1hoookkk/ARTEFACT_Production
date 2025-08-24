@@ -125,7 +125,7 @@ public:
     
     // Audio processing
     void prepareToPlay(double sampleRate);
-    void processBlock(juce::AudioSampleBuffer& buffer);
+    void processBlock(juce::AudioBuffer<float>& buffer);
     void reset();
     
     // Dual filter configuration
@@ -158,7 +158,7 @@ public:
     
     // Audio processing interface
     void prepareToPlay(double sampleRate, int samplesPerBlock);
-    void processBlock(juce::AudioSampleBuffer& buffer);
+    void processBlock(juce::AudioBuffer<float>& buffer);
     void releaseResources();
     
     // Main filter controls (thread-safe for UI)
