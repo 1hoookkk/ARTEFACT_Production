@@ -1,7 +1,9 @@
 #pragma once
 #include <JuceHeader.h>
 #include "ThemeAwareLookAndFeelStub.h"
-#include "PixelCanvasComponentStub.h"
+#include "PixelCanvasComponent.h"
+#include "WaveformThumbnailComponent.h"
+#include "PianoRollComponent.h"
 #include "LookAndFeelTokens.h"
 
 // Forward declarations
@@ -47,8 +49,11 @@ private:
     std::unique_ptr<ThemeAwareLookAndFeel> themeLookAndFeel_;
     scp::ThemeTokens currentTokens_;
     
-    // Main UI components
+    // Main UI components (Phase 2)
     std::unique_ptr<PixelCanvasComponent> pixelCanvas_;
+    std::unique_ptr<WaveformThumbnailComponent> waveformThumbnail_;
+    std::unique_ptr<PianoRollComponent> pianoRoll_;
+    std::unique_ptr<juce::TextButton> loadButton_;
     
     // Control panels (simplified for Y2K theme)
     std::unique_ptr<juce::Component> leftControlPanel_;

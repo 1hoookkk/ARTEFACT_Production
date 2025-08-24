@@ -126,7 +126,9 @@ target_sources(SpectralCanvas PRIVATE
     Source/GUI/PluginEditorMVP.cpp
     Source/GUI/PluginEditorY2K.cpp
     # Source/GUI/ThemeAwareLookAndFeel.cpp  # Temporarily excluded - duplicate method definitions
-    # Source/GUI/PixelCanvasComponent.cpp   # Temporarily excluded - dependency on ThemeAwareLookAndFeel
+    Source/GUI/PixelCanvasComponent.cpp    # Phase 2 UI - pixel canvas component
+    Source/GUI/WaveformThumbnailComponent.cpp  # Phase 2 UI - waveform display
+    Source/GUI/PianoRollComponent.cpp     # Phase 2 UI - piano roll sidebar
     
     # Essential UI Components (fix for paint-to-audio interface)
     # Source/GUI/PaintControlPanel.cpp  # LEGACY: Excluded - potential API compatibility issues

@@ -308,6 +308,83 @@ double SampleMaskingEngine::getSampleLengthSeconds() const
 }
 
 //==============================================================================
+// RT-Safe Atomic Buffer Access (Phase 2 UI Integration)
+
+bool SampleMaskingEngine::loadSampleFromFile(const juce::File& file)
+{
+    if (!file.existsAsFile())
+        return false;
+
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+    if (!reader)
+        return false;
+
+    // Use 64-bit lengths from reader; allocate with safe cast
+    const int numChannels = static_cast<int>(reader->numChannels);
+    const int64_t length64 = reader->lengthInSamples;
+    if (length64 <= 0)
+        return false;
+    const int numSamples = static_cast<int>(length64);
+
+    // Allocate new buffer ON BACKGROUND THREAD (caller responsibility)
+    auto newBuffer = std::make_shared<juce::AudioBuffer<float>>(numChannels, numSamples);
+    newBuffer->clear();
+
+    // Read file into buffer; this will be the heavy op (must be off audio thread)
+    reader->read(newBuffer.get(), 0, numSamples, 0, true, true);
+
+    // Update metadata (background/message thread)
+    currentSampleName = file.getFileName();
+    sourceSampleRate = reader->sampleRate;
+
+    // Atomically publish buffer to audio thread
+    loadedAtomicSampleBuffer.store(newBuffer, std::memory_order_release);
+
+    return true;
+}
+
+std::shared_ptr<juce::AudioBuffer<float>> SampleMaskingEngine::getLoadedSampleBuffer() const noexcept
+{
+    return loadedAtomicSampleBuffer.load(std::memory_order_acquire);
+}
+
+juce::String SampleMaskingEngine::getLoadedSampleName() const noexcept
+{
+    return currentSampleName;
+}
+
+double SampleMaskingEngine::getLoadedSampleRate() const noexcept
+{
+    return sourceSampleRate;
+}
+
+int SampleMaskingEngine::getLoadedNumChannels() const noexcept
+{
+    auto ptr = loadedAtomicSampleBuffer.load(std::memory_order_acquire);
+    return ptr ? ptr->getNumChannels() : 0;
+}
+
+void SampleMaskingEngine::readSampleInto(juce::AudioBuffer<float>& dest, int destStartSample, int numSamplesToCopy, int srcChannel, int destChannel) const noexcept
+{
+    auto srcPtr = loadedAtomicSampleBuffer.load(std::memory_order_acquire);
+    if (!srcPtr) return;
+
+    const int available = srcPtr->getNumSamples();
+    const int toCopy = juce::jmin(available, numSamplesToCopy);
+    const int sChan = juce::jlimit(0, srcPtr->getNumChannels() - 1, srcChannel);
+    const int dChan = juce::jlimit(0, dest.getNumChannels() - 1, destChannel);
+
+    const float* src = srcPtr->getReadPointer(sChan);
+    float* dst = dest.getWritePointer(dChan);
+
+    // memcpy is safe and non-blocking in audio thread
+    memcpy(dst + (size_t)destStartSample, src, sizeof(float) * (size_t)toCopy);
+}
+
+//==============================================================================
 // Sample Playback Control
 
 void SampleMaskingEngine::startPlayback()

@@ -61,6 +61,14 @@ public:
     void loadSample(const juce::AudioBuffer<float>& sampleBuffer, double sourceSampleRate);
     void clearSample();
     
+    // RT-safe atomic buffer access (Phase 2 UI integration)
+    bool loadSampleFromFile(const juce::File& file);
+    std::shared_ptr<juce::AudioBuffer<float>> getLoadedSampleBuffer() const noexcept;
+    juce::String getLoadedSampleName() const noexcept;
+    double getLoadedSampleRate() const noexcept;
+    int getLoadedNumChannels() const noexcept;
+    void readSampleInto(juce::AudioBuffer<float>& dest, int destStartSample, int numSamplesToCopy, int srcChannel = 0, int destChannel = 0) const noexcept;
+    
     bool hasSample() const { return sampleBuffer != nullptr; }
     juce::String getCurrentSampleName() const { return currentSampleName; }
     double getSampleLengthSeconds() const;
@@ -227,6 +235,9 @@ private:
     juce::String currentSampleName;
     double sourceSampleRate = 44100.0;
     double currentSampleRate = 44100.0;
+    
+    // RT-safe atomic buffer for Phase 2 UI integration
+    std::atomic<std::shared_ptr<juce::AudioBuffer<float>>> loadedAtomicSampleBuffer;
     
     // Playback state
     std::atomic<double> playbackPosition{0.0};

@@ -558,6 +558,21 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
 }
 
 //==============================================================================
+// Async Sample Loading (Phase 2 UI Integration)
+
+void ARTEFACTAudioProcessor::enqueueSampleLoad(const juce::File& file)
+{
+    // Launch async job to run loader off the audio thread.
+    // Using std::future/std::async is fine under C++23 with JUCE8.
+    std::future<bool> fut = std::async(std::launch::async, [this, file]() -> bool
+    {
+        return this->sampleMaskingEngine.loadSampleFromFile(file);
+    });
+
+    sampleLoadFuture = std::move(fut);
+}
+
+//==============================================================================
 // Editor Management
 
 juce::AudioProcessorEditor* ARTEFACTAudioProcessor::createEditor()

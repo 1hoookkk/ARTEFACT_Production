@@ -2,6 +2,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <future>
+#include <optional>
 #include "Core/Commands.h"
 #include "Core/CommandQueue.h"
 #include "Core/ForgeProcessor.h"
@@ -48,6 +50,9 @@ public:
     bool pushCommandToQueue(const Command& newCommand);
 
     void parameterChanged(const juce::String&, float) override;
+    
+    // Async sample loading for Phase 2 UI
+    void enqueueSampleLoad(const juce::File& file);
     
     // Accessors for GUI
     ForgeProcessor& getForgeProcessor() { return forgeProcessor; }
@@ -132,6 +137,9 @@ private:
     
     // Paint event queue for real-time paint-to-audio
     SpectralPaintQueue paintQueue;
+    
+    // Async sample loading management
+    std::optional<std::future<bool>> sampleLoadFuture;
     
     // Command processing methods
     void processCommands();
