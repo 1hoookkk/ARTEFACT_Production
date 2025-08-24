@@ -63,7 +63,7 @@ private:
     std::unique_ptr<juce::ToggleButton> testToneButton_;
     std::unique_ptr<juce::TextButton> clearButton_;
     
-    #if !defined(NDEBUG)
+    #if defined(ENABLE_DEBUG_BUTTON)
     std::unique_ptr<juce::TextButton> debugButton_;
     #endif
     

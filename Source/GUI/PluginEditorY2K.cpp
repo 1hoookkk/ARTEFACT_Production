@@ -100,7 +100,7 @@ void PluginEditorY2K::createControls()
     pixelCanvas_->setReduceMotion(reduceMotion_.load());
     addAndMakeVisible(*pixelCanvas_);
     
-    #if !defined(NDEBUG)
+    #if defined(ENABLE_DEBUG_BUTTON)
     // Debug button for testing paint queue
     auto dbgBtn = std::make_unique<TextButton>("DBG Push");
     dbgBtn->onClick = [this]()
