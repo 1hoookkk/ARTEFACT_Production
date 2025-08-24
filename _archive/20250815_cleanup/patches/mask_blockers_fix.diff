@@ -1,0 +1,106 @@
+--- a/Source/Core/SpectralSynthEngine.h
++++ b/Source/Core/SpectralSynthEngine.h
+@@ -731,6 +731,10 @@ private:
+     juce::AudioBuffer<float> granularBuffer;
+     juce::AudioBuffer<float> sampleBuffer;
+     juce::AudioBuffer<float> emuBuffer;
++    
++    // RT-SAFE MASK OPTIMIZATION: Pre-computed frequency mapping for audio hot path
++    std::array<float, MAX_SPECTRAL_OSCILLATORS> precomputedMaskY;  // Per-band Y coordinates for mask sampling
++    std::atomic<bool> maskYPrecomputed{false};  // Flag to track if precomputation is done
+ 
+     //==============================================================================
+     // Post-Processing Effects (RT-safe, no allocations)
+
+--- a/Source/Core/SpectralSynthEngine.cpp
++++ b/Source/Core/SpectralSynthEngine.cpp
+@@ -462,6 +462,18 @@ void SpectralSynthEngine::prepareToPlay(double sampleRate, int samplesPerBlock,
+     // RT-SAFE: Prepare mask snapshot system
+     if (maskSnapshot)
+         maskSnapshot->prepareToPlay(sampleRate, samplesPerBlock);
++    
++    // MASK OPTIMIZATION: Pre-compute maskY coordinates for all frequency bands
++    const float minLog2 = std::log2(20.0f);  // Min frequency 20Hz
++    const float maxLog2 = std::log2(20000.0f);  // Max frequency 20kHz
++    const float invLog2Range = 1.0f / (maxLog2 - minLog2);
++    
++    for (int band = 0; band < MAX_SPECTRAL_OSCILLATORS; ++band)
++    {
++        // Calculate representative frequency for this band
++        const float bandFreq = 20.0f * std::pow(1000.0f, static_cast<float>(band) / static_cast<float>(MAX_SPECTRAL_OSCILLATORS - 1));
++        const float logFreq = std::log2(bandFreq);
++        precomputedMaskY[band] = juce::jlimit(0.0f, 1.0f, (logFreq - minLog2) * invLog2Range);
++    }
++    maskYPrecomputed.store(true, std::memory_order_release);
+ 
+     // NEW: Prepare CDP spectral processing system
+     if (cdpSpectralEngine)
+@@ -1411,16 +1423,25 @@ void SpectralSynthEngine::processSpectralOscillators(juce::AudioBuffer<float>&
+             {
+                 const float oscSample = oscillator.renderNextSamplePhasor(currentSampleRate);
+                 
+-                // RT-SAFE MASK SAMPLING: Apply spectral mask with bilinear interpolation
++                // RT-SAFE MASK SAMPLING: Apply spectral mask with precomputed coordinates
+                 float maskValue = 1.0f; // Default no masking
+-                if (maskSnapshot)
++                if (maskSnapshot && maskYPrecomputed.load(std::memory_order_acquire))
+                 {
+                     // Calculate time position (normalized 0-1 across block)
+-                    const float timeNorm = static_cast<float>(sample) / static_cast<float>(numSamples);
++                    const float timeX = static_cast<float>(sample) / static_cast<float>(numSamples);
+                     
+-                    // Get oscillator frequency for mask lookup
+-                    const float frequency = oscillator.getFrequency();
++                    // Use precomputed maskY to avoid log operations in audio hot path
++                    const float maskY = precomputedMaskY[oscIndex];
+                     
+-                    // RT-SAFE: Sample mask with atomic snapshot access
+-                    maskValue = maskSnapshot->sampleMask(timeNorm, frequency, currentSampleRate);
++                    // RT-SAFE: Direct bilinear sampling without frequency conversion
++                    const MaskSnapshot::MaskData* snapshot = maskSnapshot->getCurrentSnapshot();
++                    if (snapshot)
++                    {
++                        const float x = timeX * (MaskSnapshot::MASK_WIDTH - 1);
++                        const float y = maskY * (MaskSnapshot::MASK_HEIGHT - 1);
++                        maskValue = snapshot->sampleBilinear(x, y);
++                        
++                        // Apply mask parameters
++                        const float blend = maskSnapshot->getMaskBlend();
++                        const float strength = maskSnapshot->getMaskStrength();
++                        maskValue = juce::jlimit(0.0f, 1.0f, maskValue * strength);
++                        maskValue = juce::jlimit(0.0f, 1.0f, (1.0f - blend) + blend * maskValue);
++                    }
+                 }
+                 
+                 // CONSTANT-POWER HUE PANNING: Use sqrt LUT for proper stereo imaging
+
+--- a/Source/Core/MaskSnapshot.cpp
++++ b/Source/Core/MaskSnapshot.cpp
+@@ -147,16 +147,21 @@ void MaskSnapshot::paintCircle(float centerX, float centerY, float radius, floa
+         for (int x = minX; x <= maxX; ++x)
+         {
+             float dx = float(x - pixelX);
+             float dy = float(y - pixelY);
+-            float distance = std::sqrt(dx * dx + dy * dy);
++            float distSq = dx * dx + dy * dy;  // Use squared distance
++            float radiusSq = float(pixelRadius * pixelRadius);
+             
+-            if (distance <= float(pixelRadius))
++            if (distSq <= radiusSq)
+             {
+-                // Anti-aliasing at edge
+-                float alpha = (distance < float(pixelRadius) - 0.5f) ? 1.0f : 
+-                             juce::jmax(0.0f, float(pixelRadius) + 0.5f - distance);
++                // Anti-aliasing using squared distance to avoid sqrt
++                float alpha = 1.0f;
++                if (distSq > (pixelRadius - 0.5f) * (pixelRadius - 0.5f))
++                {
++                    // Feather edge: w = saturate((radius^2 - dist^2) * invFeather^2)
++                    const float featherRange = 1.0f;  // 1 pixel feather
++                    const float invFeatherSq = 1.0f / (featherRange * featherRange);
++                    alpha = juce::jlimit(0.0f, 1.0f, (radiusSq - distSq) * invFeatherSq);
++                }
+                 
+                 float currentValue = workBuffer->getMaskValue(x, y);
+                 float newValue = currentValue + alpha * (value - currentValue);
+                 workBuffer->setMaskValue(x, y, newValue);

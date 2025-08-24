@@ -1,0 +1,118 @@
+--- Source/Core/SpectralSynthEngine.h.orig
++++ Source/Core/SpectralSynthEngine.h
+@@ -637,6 +637,14 @@ private:
+     // RT-SAFE MASK SYSTEM: Lock-free GUI-to-audio communication
+     std::unique_ptr<MaskSnapshot> maskSnapshot;
+     
++    // D) Phasor arrays sized to capacity, not bands
++    std::atomic<const MaskSnapshot::MaskData*> maskSnapshotAtomic{nullptr};
++    
++    // Additional phasor state arrays (sized to kMaxBands)
++    static constexpr int kMaxBands = MAX_SPECTRAL_OSCILLATORS;
++    std::array<float, kMaxBands> phasorRotReal;     // Complex rotation real part
++    std::array<float, kMaxBands> phasorRotImag;     // Complex rotation imaginary part
++    std::array<int, kMaxBands> renormCounters;      // Per-phasor renormalization counters
++    
+     //==============================================================================
+     // Audio Configuration
+     
+--- Source/Core/SpectralSynthEngine.cpp.orig
++++ Source/Core/SpectralSynthEngine.cpp
+@@ -517,10 +517,10 @@ void SpectralSynthEngine::processBlock(
+         _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+     #endif
+     
+-    // CHANNEL-SAFE: Early out for edge cases
+-    const int numSamples = buffer.getNumSamples();
++    // A) Early-outs & N validation
+     const int numCh = buffer.getNumChannels();
+-    if (numSamples <= 0 || numCh <= 0) return;
++    const int numSmp = buffer.getNumSamples();
++    if (numCh <= 0 || numSmp <= 0) return;
+     
+     #ifndef NDEBUG
+-    jassert(numSamples > 0 && numSamples <= 8192);  // Reasonable block size
++    jassert(numSmp > 0 && numSmp <= 8192);  // Reasonable block size
+     jassert(numCh > 0 && numCh <= 8);   // Reasonable channel count
+     #endif
+     
+-    if (numSamples > 8192) return;
++    if (numSmp > 8192) return;
+     
+     // RT-SAFE: Snapshot all parameters at block start for consistent processing
+     const BlockParams blockParams = snapshotParametersAtBlockStart();
+     
++    // After BlockParams snapshot:
++    const int bands = blockParams.activeBands;
++    const int N = juce::jlimit(1, bands, blockParams.topN);
++    if (bands <= 0 || N <= 0) return;
++    
+     // RT-SAFE: Apply any pending structural changes at block boundary
+     applyStructuralChangesIfPending();
+@@ -475,6 +478,11 @@ void SpectralSynthEngine::prepareToPlay
+     }
+     maskYPrecomputed.store(true, std::memory_order_release);
+     
++    // E) Sample-rate & block-size resilience  
++    // In prepareToPlay(), initialize atomic mask snapshot
++    if (maskSnapshot) {
++        maskSnapshotAtomic.store(maskSnapshot->getCurrentSnapshot(), std::memory_order_release);
++    }
++    
+     // NEW: Prepare CDP spectral processing system
+     if (cdpSpectralEngine)
+@@ -1458,8 +1466,9 @@ void SpectralSynthEngine::processSpectr
+     float* L = buffer.getWritePointer(0);
+     float* R = (numCh > 1) ? buffer.getWritePointer(1) : L;  // mono-safe: fold R into L
+     
+-    // UNITY MASK: Load once per block with unity fallback
+-    const MaskSnapshot::MaskData* snap = maskSnapshot ? maskSnapshot->getCurrentSnapshot() : nullptr;
++    // B) Unity mask sampling (no null deref, no misc types)
++    // Load once:
++    const auto* snap = maskSnapshotAtomic.load(std::memory_order_acquire);
+     
+     // TOP-N BAND SELECTION: Collect brightness values for sorting (once per block)
+     for (auto& oscillator : spectralOscillators)
+@@ -1526,13 +1535,14 @@ void SpectralSynthEngine::processSpectr
+         // PROCESS ONLY TOP-N BRIGHTEST BANDS with enhanced bounds hardening
+         const int safeBandCount = juce::jmin(validBands, static_cast<int>(bandIndices.size()));
+-        for (int i = 0; i < safeBandCount; ++i)
++        for (int n = 0; n < safeBandCount; ++n)
+         {
+             // BOUNDS HARDENING: Multiple levels of validation
+-            if (i >= static_cast<int>(bandIndices.size())) break;
+-            const int idx = bandIndices[i];
++            if (n >= static_cast<int>(bandIndices.size())) break;
++            const int idx = bandIndices[n];
+             
+-            // EXTRA INDEX GUARDS: Unsigned bounds check (cheap)
+-            if ((unsigned)idx >= (unsigned)blockParams.activeBands) continue;
++            // C) Index & coord guards (cheap but strict)
++            // Before using idx:
++            if ((unsigned) idx >= (unsigned) blockParams.activeBands) continue;
+             
+             #ifndef NDEBUG
+             jassert(idx >= 0 && idx < MAX_SPECTRAL_OSCILLATORS);
+@@ -3301,6 +3311,22 @@ void SpectralSynthEngine::applyStructur
+             
+             // Recompute precomputedMaskY[0..currentBands) in-place
+             precomputedMaskY[i] = 1.0f - freqNorm; // Inverted Y for spectral display
++            
++            // D) Phasor arrays sized to capacity, not bands
++            // In applyStructuralChangesIfPending()/prepareToPlay(), recompute rot[idx] for ALL idx < bands
++            if (i < kMaxBands) {
++                const float w = 2.0f * juce::MathConstants<float>::pi * freqMap[i] / static_cast<float>(currentSampleRate);
++                phasorRotReal[i] = std::cos(w);
++                phasorRotImag[i] = std::sin(w);
++                renormCounters[i] = 0;
++            }
++        }
++        
++        // Zero/identity for idx >= bands
++        for (int i = currentBands; i < kMaxBands; ++i) {
++            phasorRotReal[i] = 1.0f;
++            phasorRotImag[i] = 0.0f;
++            renormCounters[i] = 0;
+         }
+         
+         maskYPrecomputed.store(true, std::memory_order_release);

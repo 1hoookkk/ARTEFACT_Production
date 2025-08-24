@@ -1,0 +1,118 @@
+# SPSC Queue Validator Profile v1.0
+# Specialized RT-Audio Guardian variant for lock-free queue validation
+
+name: spsc-queue-validator
+parent: rt-audio-guardian
+version: "1.0.0"
+specialization: "Lock-free SPSC queue correctness validation"
+
+description: >
+  Specialized variant focused on SpscRing queue implementation correctness.
+  Validates atomic memory ordering, power-of-2 capacity constraints, and
+  single-producer/single-consumer usage patterns in paint-to-audio pipeline.
+
+# Enhanced Trigger Conditions (adds to parent)
+additional_triggers:
+  diff_path_matches:
+    - "Source/Core/PaintQueue.h"
+    - "Source/rt/**"
+  diff_contains:
+    - "SpscRing"
+    - "forcePush"
+    - "memory_order"
+    - "atomic"
+    - "PaintGesture"
+
+# Specialized Rules (extends parent)
+specialized_rules:
+  spsc_constraints:
+    single_producer:
+      description: "Only UI thread should call push/forcePush"
+      violations:
+        - "push.*processBlock"
+        - "forcePush.*audio.*thread"
+      severity: critical
+      
+    single_consumer: 
+      description: "Only audio thread should call pop"
+      violations:
+        - "pop.*timerCallback"
+        - "pop.*mouseDown"
+        - "pop.*GUI.*thread"  
+      severity: critical
+      
+    capacity_power_of_2:
+      description: "Queue capacity must be power of 2 for efficiency"
+      check: "static_assert.*Capacity.*power.*2"
+      severity: high
+      
+  memory_ordering:
+    relaxed_for_data:
+      description: "Data access can use memory_order_relaxed"
+      required_pattern: "memory_order_relaxed.*head_|tail_"
+      severity: medium
+      
+    acquire_release_for_synchronization:
+      description: "Use acquire/release for queue synchronization"
+      check_patterns:
+        - "tail_.*load.*memory_order_acquire"
+        - "head_.*store.*memory_order_release"
+      severity: high
+
+# Queue-Specific Analysis
+queue_analysis:
+  overflow_handling:
+    check_policies:
+      - "forcePush overwrites oldest data"
+      - "push returns false when full"
+      - "No blocking in either case"
+    performance_impact: "Measure queue utilization"
+    
+  memory_alignment:
+    cache_line_separation: "head_ and tail_ should be cache-aligned"
+    data_alignment: "PaintGesture alignment for SIMD if needed"
+    
+  usage_patterns:
+    burst_handling: "Queue should handle paint gesture bursts"
+    latency_measurement: "Track enqueue-to-dequeue latency"
+
+# Enhanced KPIs
+additional_kpis:
+  queue_overflow_rate: "< 0.1%"      # Percentage of forcePush operations
+  memory_ordering_violations: "= 0"   # Critical RT-safety violations
+  cache_miss_prediction: "> 0.8"     # Predict cache-unfriendly patterns
+  spsc_pattern_adherence: "> 0.95"   # Correct usage patterns
+
+# Test Fixtures
+test_fixtures:
+  - name: "multiple_producers"
+    code: |
+      void processBlock() { queue.push(gesture); }    // VIOLATION
+      void timerCallback() { queue.push(gesture); }   // VIOLATION
+    expected_violations: ["Multiple producers detected"]
+    
+  - name: "multiple_consumers" 
+    code: |
+      void processBlock() { queue.pop(gesture); }     // OK
+      void timerCallback() { queue.pop(gesture); }    // VIOLATION
+    expected_violations: ["Multiple consumers detected"]
+    
+  - name: "correct_spsc_usage"
+    code: |
+      void timerCallback() { queue.forcePush(gesture); } // UI thread - OK
+      void processBlock() { 
+          while (queue.pop(gesture)) { /* process */ }     // Audio thread - OK
+      }
+    expected_violations: []
+
+# Output Schema Extension
+output_extensions:
+  queue_health:
+    utilization_percent: number
+    overflow_incidents: integer
+    memory_ordering_score: number
+    cache_efficiency_prediction: number
+  spsc_violations:
+    producer_thread_violations: array
+    consumer_thread_violations: array
+    capacity_violations: array

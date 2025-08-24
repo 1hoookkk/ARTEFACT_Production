@@ -1,0 +1,510 @@
+cmake_minimum_required(VERSION 3.24)
+project(SpectralCanvas VERSION 1.0.0)
+
+# C++ Standard - Upgraded to C++23 for modern features
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Build options
+option(BUILD_LEGACY "Build legacy sources that reference pre-refactor APIs" OFF)
+option(WARNINGS_AS_ERRORS "Treat warnings as errors (CI recommended)" OFF)
+
+# Fetch JUCE - Using JUCE 8.0.8 with C++23 support
+include(FetchContent)
+
+# Using JUCE 8.0.8 - Latest stable release with C++23 support
+set(JUCE_VERSION "8.0.8")
+message(STATUS "Using JUCE version: ${JUCE_VERSION}")
+
+FetchContent_Declare(juce
+    GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+    GIT_TAG ${JUCE_VERSION}
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE)
+FetchContent_MakeAvailable(juce)
+
+# SpectralCanvas Pro - Professional VST3 Plugin
+juce_add_plugin(SpectralCanvas
+    PRODUCT_NAME "SpectralCanvas Pro"
+    COMPANY_NAME "SpectralAudio"
+    BUNDLE_ID "com.spectralaudio.spectralcanvas"
+    PLUGIN_MANUFACTURER_CODE "SpAu"
+    PLUGIN_CODE "SpCv"
+    FORMATS VST3 Standalone
+    VST3_CATEGORIES "Instrument" "Synthesizer"
+    IS_SYNTH TRUE
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT FALSE
+    IS_MIDI_EFFECT FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    VERSION ${PROJECT_VERSION})
+
+# Build options
+option(BUILD_EMU_ROMPLER "Build EMU Rompler version" ON)
+option(SC_MINIMAL_EDITOR_DIAG "Build with minimal editor for isolation" OFF)
+option(SC_MVP_UI "Build minimal MVP UI instead of full UI" ON)
+
+# SpectralCanvas Pro Plugin Sources
+target_sources(SpectralCanvas PRIVATE
+    # Core Plugin Architecture
+    Source/Core/PluginProcessor.cpp
+    Source/Core/Config.cpp
+    Source/GUI/PluginEditor.cpp
+    
+    # Paint-to-Audio Engine
+    # Source/CanvasComponent.cpp  # LEGACY: Excluded - references old SpectralSynthEngine APIs
+    Source/Core/PaintEngine.cpp
+    Source/Core/SpectralSynthEngine.cpp
+    Source/Core/SampleMaskingEngine.cpp
+    Source/Core/CDPSpectralEngine.cpp
+    Source/Core/MaskSnapshot.cpp
+    Source/Core/CEM3389Filter.cpp
+    
+    # Layer and Undo System
+    Source/Core/CanvasLayer.cpp
+    Source/Core/UndoableActions.h
+    
+    # Session Management
+    Source/Core/SessionManager.cpp
+    
+    # Audio Engine Core
+    Source/Core/AtomicOscillator.cpp
+    Source/Core/OptimizedOscillatorPool.h
+    Source/Core/ForgeProcessor.cpp
+    Source/Core/ForgeVoice.cpp
+    Source/Core/LinearTrackerEngine.cpp
+    Source/Core/SecretSauceEngine.cpp
+    Source/Core/TubeStage.cpp
+    Source/Core/SpectralMask.cpp
+    Source/Core/SpatialSampleGrid.cpp
+    
+    # Modern JUCE DSP Components
+    Source/dsp/SpscRing.h
+    Source/dsp/PaintEvent.h
+    Source/dsp/Voice.h
+    Source/dsp/VoicePool.h
+    Source/dsp/SpectralSynthEngine.h
+    Source/Core/MorphFilter.cpp
+    Source/Core/EMURomplerEngine.cpp
+    Source/Core/TapeSpeed.cpp
+    Source/Core/StereoWidth.cpp
+    
+    # Professional Features
+    Source/Core/ProfessionalMeteringSuite.h
+    Source/Core/AudioRecorder.cpp
+    Source/Core/QualityGuardian.cpp
+    Source/Core/PerformanceProfiler.cpp
+    
+    # Command System
+    Source/Core/CommandQueueOptimized.h
+    Source/Core/OptimizedCommands.h
+    
+    # Visual System
+    Source/UI/AlchemistLabTheme.cpp
+    Source/GUI/ExportDialog.cpp
+    
+    # Modern UI Design System
+    Source/UI/Theme.h
+    Source/UI/LookAndFeelPro.h
+    Source/UI/SectionPanel.h
+    Source/UI/CanvasView.h
+    
+    # Asset Management System
+    Source/UI/AssetManager.h
+    Source/UI/AssetMap.h
+    Source/UI/AssetProcessor.h
+    Source/UI/AssetIntegration.h
+    Source/UI/AssetTestComponent.h
+    Source/UI/MysteryButton.h
+    # Source/GUI/StandaloneSampleSlot.cpp  # LEGACY: Excluded - references old APIs
+    Source/GUI/Skin/SpectralLookAndFeel.cpp
+    Source/GUI/Skin/LogoComponent.cpp
+    # MVP Minimal Editor
+    Source/GUI/PluginEditorMVP.cpp
+    
+    # Essential UI Components (fix for paint-to-audio interface)
+    # Source/GUI/PaintControlPanel.cpp  # LEGACY: Excluded - potential API compatibility issues
+    Source/GUI/HeaderBarComponent.cpp
+    # Source/GUI/ForgePanel.cpp  # LEGACY: Excluded - potential API compatibility issues
+    Source/GUI/ArtefactLookAndFeel.cpp
+    # Source/GUI/SampleSlotComponent.cpp  # LEGACY: Excluded - potential API compatibility issues
+    
+    # Utilities
+    Source/Core/ColorToSpectralMapper.cpp
+    Source/Core/SpectralBrushPresets.cpp
+    
+    # New Vector UI System
+    Source/ui/Panel.cpp
+    Source/ui/Panel.h
+    Source/ui/Tokens.h
+    Source/ui/Layout.h
+    Source/GUI/PluginEditorVector.cpp
+    Source/GUI/PluginEditorVector.h
+    # Source/GUI/PaintCanvasComponent.cpp  # Moved to .old - replaced by PixelCanvasComponent
+    # Source/GUI/PaintCanvasComponent.h   # Moved to .old - replaced by PixelCanvasComponent
+    
+    # Determinism utilities
+    Source/Util/Determinism.cpp)
+    
+message(STATUS "Building SpectralCanvas Pro VST3 Plugin with complete paint-to-audio system")
+
+# Essential compile definitions
+target_compile_definitions(SpectralCanvas PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    JUCE_REPORT_APP_USAGE=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_ENABLE_REPAINT_DEBUGGING=0
+    JUCE_MODULE_AVAILABLE_juce_core=1
+    JUCE_MODULE_AVAILABLE_juce_gui_basics=1
+    # Remove JUCE watermark and licensing restrictions
+    JUCE_COMMERCIAL_LICENSE=1
+    JUCE_DISABLE_JUCE_VERSION_PRINTING=1
+    JUCE_MODAL_LOOPS_PERMITTED=1)
+
+# 🚨 FORCE MVP UI MODE - NO AMBIGUITY
+target_compile_definitions(SpectralCanvas PRIVATE SC_MVP_UI=1)
+target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_MVP_UI=1)
+
+# Legacy build control
+target_compile_definitions(SpectralCanvas PRIVATE BUILD_LEGACY=$<BOOL:${BUILD_LEGACY}>)
+
+# Include directories
+target_include_directories(SpectralCanvas PRIVATE
+    Source
+    Source/Core
+    Source/UI)
+
+# Professional Plugin JUCE modules
+target_link_libraries(SpectralCanvas PRIVATE
+    juce::juce_audio_basics         # Core audio functionality
+    juce::juce_audio_devices        # Audio I/O
+    juce::juce_audio_formats        # Audio file support
+    juce::juce_audio_plugin_client  # VST3 plugin hosting
+    juce::juce_audio_processors     # AudioProcessor base
+    juce::juce_audio_utils          # Audio utilities
+    juce::juce_core                 # Core utilities
+    juce::juce_cryptography         # MD5, SHA256 hashing
+    juce::juce_data_structures      # ValueTree, XML
+    juce::juce_dsp                  # DSP utilities (FFT, etc.)
+    juce::juce_events               # Event handling
+    juce::juce_graphics             # Drawing
+    juce::juce_gui_basics           # UI components
+    juce::juce_gui_extra)           # Advanced UI components
+
+# Generate JUCE header
+juce_generate_juce_header(SpectralCanvas)
+
+# Demo harness for testing EMU->Spectral->Tube chain
+juce_add_console_app(render_test_input
+    PRODUCT_NAME "SpectralCanvas Render Test")
+
+target_sources(render_test_input PRIVATE
+    Source/Tools/render_test_input.cpp
+    Source/Core/SpectralSynthEngine.cpp
+    Source/Core/EMUFilter.cpp
+    Source/Core/TubeStage.cpp
+    Source/Core/AtomicOscillator.cpp
+    Source/Core/ColorToSpectralMapper.cpp
+    Source/Core/CDPSpectralEngine.cpp
+    Source/Core/PerformanceProfiler.cpp
+    Source/Util/Determinism.cpp)
+
+target_include_directories(render_test_input PRIVATE Source)
+
+target_link_libraries(render_test_input PRIVATE
+    juce::juce_audio_formats
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics
+)
+
+target_compile_definitions(render_test_input PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+)
+
+juce_generate_juce_header(render_test_input)
+
+# Simple test harness without EMU/Tube dependencies
+juce_add_console_app(render_test_simple
+    PRODUCT_NAME "SpectralCanvas Simple Test")
+
+target_sources(render_test_simple PRIVATE
+    Source/Tools/render_test_simple.cpp)
+
+target_include_directories(render_test_simple PRIVATE Source)
+
+target_link_libraries(render_test_simple PRIVATE
+    juce::juce_audio_formats
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics)
+
+target_compile_definitions(render_test_simple PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0)
+
+juce_generate_juce_header(render_test_simple)
+
+# Demo recorder with canvas frames
+juce_add_console_app(record_demo
+    PRODUCT_NAME "SpectralCanvas Demo Recorder")
+
+target_sources(record_demo PRIVATE
+    Source/Tools/record_demo.cpp)
+
+target_include_directories(record_demo PRIVATE Source)
+
+target_link_libraries(record_demo PRIVATE
+    juce::juce_audio_formats
+    juce::juce_audio_basics
+    juce::juce_core
+    juce::juce_dsp
+    juce::juce_graphics
+    juce::juce_gui_basics)
+
+target_compile_definitions(record_demo PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0)
+
+juce_generate_juce_header(record_demo)
+
+# Host Harness tool for editor lifecycle testing
+option(BUILD_HOST_HARNESS "Build the HostHarness tool" OFF)
+if(BUILD_HOST_HARNESS)
+    add_subdirectory(tools/HostHarness)
+endif()
+
+# Constructor-only smoke test (critical for crash diagnosis)
+juce_add_console_app(ConstructorOnly
+    PRODUCT_NAME "Constructor Only Test")
+
+target_sources(ConstructorOnly PRIVATE
+    tests/ConstructorOnly.cpp
+    Source/Core/PluginProcessor.cpp
+    Source/Core/Config.cpp
+    Source/Core/AtomicOscillator.cpp
+    Source/Core/SpectralSynthEngine.cpp
+    Source/Core/ColorToSpectralMapper.cpp
+    Source/Core/TapeSpeed.cpp
+    Source/Core/StereoWidth.cpp)
+
+target_compile_definitions(ConstructorOnly PRIVATE
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JucePlugin_Name="SpectralCanvas Pro"
+    JucePlugin_IsMidiEffect=0
+    JucePlugin_IsSynth=1)
+
+target_include_directories(ConstructorOnly PRIVATE
+    Source
+    Source/Core)
+
+target_link_libraries(ConstructorOnly PRIVATE
+    juce::juce_audio_basics
+    juce::juce_audio_processors
+    juce::juce_core
+    juce::juce_dsp)
+
+juce_generate_juce_header(ConstructorOnly)
+
+# OfflineRender console app for demo generation (optional) 
+option(BUILD_OFFLINE_RENDER "Build OfflineRender demo generator" ON)
+if(BUILD_OFFLINE_RENDER)
+    juce_add_console_app(OfflineRender
+        PRODUCT_NAME "SpectralCanvas OfflineRender")
+    
+    target_sources(OfflineRender PRIVATE
+        Source/OfflineRender.cpp
+        Source/Core/SpectralSynthEngine.cpp
+        Source/Core/AtomicOscillator.cpp
+        Source/Core/ColorToSpectralMapper.cpp
+        Source/Core/TapeSpeed.cpp
+        Source/Core/StereoWidth.cpp)
+    
+    target_compile_definitions(OfflineRender PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0)
+    
+    target_include_directories(OfflineRender PRIVATE
+        Source
+        Source/Core)
+    
+    target_link_libraries(OfflineRender PRIVATE
+        juce::juce_audio_basics
+        juce::juce_audio_formats
+        juce::juce_core
+        juce::juce_dsp
+        juce::juce_graphics
+        juce::juce_gui_basics)
+    
+    juce_generate_juce_header(OfflineRender)
+endif()
+
+# Unit tests executable (optional)
+option(BUILD_TESTS "Build unit tests" ON)
+if(BUILD_TESTS)
+    juce_add_console_app(SC_PaintQueueTests
+        PRODUCT_NAME "SpectralCanvas RT Tests")
+    
+    target_sources(SpectralCanvasTests PRIVATE
+        Source/Tests/TestRunner.cpp
+        Source/Tests/BasicTests.cpp
+        Source/Tests/CriticalComponentTests.cpp
+        Source/Tests/PerformanceRegressionTests.cpp
+        Source/Tests/TestEnginePreparedness.cpp
+        Source/Tests/ThreadSafetyTests.cpp
+        Source/Tests/TestHarmonicQuantizer.cpp
+        Source/Core/PaintEngine.cpp
+        Source/Core/ForgeProcessor.cpp
+        Source/Core/ForgeVoice.cpp
+        Source/Core/SampleMaskingEngine.cpp
+        Source/Core/AudioRecorder.cpp
+        Source/Core/TapeSpeed.cpp
+        Source/Core/StereoWidth.cpp
+        Source/Core/SpectralSynthEngine.cpp
+        Source/Core/AtomicOscillator.cpp
+        Source/Core/ColorToSpectralMapper.cpp
+        Source/Core/SafetyChecks.h)
+    
+    target_compile_definitions(SpectralCanvasTests PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+    
+    target_include_directories(SpectralCanvasTests PRIVATE
+        Source
+        Source/Core)
+    
+    target_link_libraries(SpectralCanvasTests PRIVATE
+        juce::juce_audio_basics
+        juce::juce_audio_devices
+        juce::juce_core
+        juce::juce_dsp                  # Required by SpectralSynthEngine, CDPSpectralEngine
+        juce::juce_graphics
+        juce::juce_gui_basics
+        juce::juce_events)
+    
+    juce_generate_juce_header(SpectralCanvasTests)
+endif()
+
+# Build configuration
+if(MSVC)
+    # Windows optimizations
+    target_compile_options(SpectralCanvas PRIVATE
+        /W4           # Warning level 4
+        /permissive-  # Conformance mode
+        $<$<CONFIG:Release>:/O2>  # Optimize for speed in Release
+        $<$<CONFIG:Release>:/GL>  # Whole program optimization
+    )
+    target_link_options(SpectralCanvas PRIVATE
+        $<$<CONFIG:Release>:/LTCG>  # Link-time code generation
+        $<$<CONFIG:Release>:/OPT:REF>  # Remove unreferenced code
+        $<$<CONFIG:Release>:/OPT:ICF>  # Identical COMDAT folding
+    )
+    # Strip debug info from Release builds
+    set_target_properties(SpectralCanvas PROPERTIES
+        LINK_FLAGS_RELEASE "/DEBUG:NONE"
+    )
+else()
+    # GCC/Clang optimizations
+    target_compile_options(SpectralCanvas PRIVATE
+        -Wall -Wextra -Wpedantic
+        $<$<CONFIG:Release>:-O3>
+        $<$<CONFIG:Release>:-march=native>
+    )
+endif()
+
+# Diagnostic compile definitions
+target_compile_definitions(SpectralCanvas PRIVATE SC_MINIMAL_EDITOR_DIAG=$<BOOL:${SC_MINIMAL_EDITOR_DIAG}>)
+
+# Status messages
+message(STATUS "")
+message(STATUS "=================================")
+message(STATUS "SpectralCanvas - Clean Foundation")
+message(STATUS "=================================")
+message(STATUS "Version: ${PROJECT_VERSION}")
+message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "")
+message(STATUS "Following Best Practices:")
+message(STATUS "  ✓ Minimal dependencies")
+message(STATUS "  ✓ SOLID principles")
+message(STATUS "  ✓ RAII resource management")
+message(STATUS "  ✓ Thread-safe design")
+message(STATUS "  ✓ Clean architecture")
+message(STATUS "")
+# Archive/build hygiene options
+option(SC_LEGACY "Include legacy/archived modules in the build" OFF)
+# Guard: ensure no archived files are part of target sources
+get_target_property(SC_SOURCES SpectralCanvas SOURCES)
+foreach(_src IN LISTS SC_SOURCES)
+    if(_src MATCHES "/_archive/" OR _src MATCHES "\\\\_archive\\\\")
+        message(FATAL_ERROR "Archived file referenced in build: ${_src}")
+    endif()
+endforeach()
+
+# Legacy toggle (reserved for explicitly adding old modules when needed)
+if(SC_LEGACY)
+    message(STATUS "SC_LEGACY=ON: Legacy/archived modules may be added explicitly here.")
+    # Intentionally empty by default to avoid accidental inclusion.
+endif()
+# Optional embedded assets (fonts, images) for consistent typography/branding
+# Place TTF/OTF files under Assets/fonts/ to embed. Build will still work without them.
+set(SC_ASSETS_FONT_DIR "${CMAKE_SOURCE_DIR}/Assets/fonts")
+if(EXISTS "${SC_ASSETS_FONT_DIR}")
+    file(GLOB SC_FONT_FILES
+        "${SC_ASSETS_FONT_DIR}/*.ttf"
+        "${SC_ASSETS_FONT_DIR}/*.otf")
+    if(SC_FONT_FILES)
+        message(STATUS "Embedding fonts: ${SC_FONT_FILES}")
+        juce_add_binary_data(EmbeddedAssets SOURCES ${SC_FONT_FILES})
+        target_link_libraries(SpectralCanvas PRIVATE EmbeddedAssets)
+        target_compile_definitions(SpectralCanvas PRIVATE SC_EMBED_FONTS=1)
+        # Link to the standalone target too, if generated
+        if(TARGET SpectralCanvas_Standalone)
+            target_link_libraries(SpectralCanvas_Standalone PRIVATE EmbeddedAssets)
+            target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_EMBED_FONTS=1)
+        endif()
+    else()
+        message(STATUS "No fonts found in Assets/fonts (skipping embedded assets)")
+        target_compile_definitions(SpectralCanvas PRIVATE SC_EMBED_FONTS=0)
+        if(TARGET SpectralCanvas_Standalone)
+            target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_EMBED_FONTS=0)
+        endif()
+    endif()
+endif()
+
+# === Tests ===
+option(BUILD_TESTS "Build unit/integration tests" ON)
+if (BUILD_TESTS)
+    juce_add_console_app(SpectralCanvasTests
+        PRODUCT_NAME "SpectralCanvas Tests")
+
+    target_sources(SC_PaintQueueTests PRIVATE
+        Tests/PaintQueueTests.cpp)
+
+    target_include_directories(SC_PaintQueueTests PRIVATE Source)
+
+    target_link_libraries(SC_PaintQueueTests PRIVATE
+        juce::juce_graphics
+        juce::juce_core
+        juce::juce_events)
+
+    target_compile_definitions(SC_PaintQueueTests PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+
+    juce_generate_juce_header(SC_PaintQueueTests)
+
+    include(CTest)
+    add_test(NAME RT_PaintQueue COMMAND SC_PaintQueueTests)
+endif()

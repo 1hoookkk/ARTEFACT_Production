@@ -1,0 +1,39 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "windows-debug",
+            "displayName": "Windows Debug",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "debug-standalone",
+            "displayName": "Debug Standalone",
+            "configurePreset": "windows-debug",
+            "targets": ["SpectralCanvas_Standalone"]
+        },
+        {
+            "name": "debug-vst3",
+            "displayName": "Debug VST3",
+            "configurePreset": "windows-debug", 
+            "targets": ["SpectralCanvas_VST3"]
+        }
+    ]
+}

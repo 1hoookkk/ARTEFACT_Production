@@ -1,0 +1,20 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [ main, master, '**/codex/**' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (RelWithDebInfo)
+        run: cmake -S . -B build -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build tests
+        run: cmake --build build --config RelWithDebInfo --target SpectralCanvasTests -- -m
+      - name: Run tests
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure
+

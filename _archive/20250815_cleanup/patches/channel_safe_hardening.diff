@@ -1,0 +1,166 @@
+--- a/Source/Core/SpectralSynthEngine.cpp
++++ b/Source/Core/SpectralSynthEngine.cpp
+@@ -516,15 +516,12 @@ void SpectralSynthEngine::processBlock(juce::AudioBuffer<float>& buffer)
+         _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+     #endif
+     
+-    // CRITICAL BUFFER VALIDATION: Prevent crashes on invalid buffers
++    // CHANNEL-SAFE: Early out for edge cases
+     const int numSamples = buffer.getNumSamples();
+-    const int numChannels = buffer.getNumChannels();
+-    
+-    #ifndef NDEBUG
+-    jassert(numSamples > 0 && numSamples <= 8192);  // Reasonable block size
+-    jassert(numChannels > 0 && numChannels <= 8);   // Reasonable channel count
+-    #endif
++    const int numCh = buffer.getNumChannels();
++    if (numSamples <= 0 || numCh <= 0) return;
+     
+-    if (numSamples <= 0 || numChannels <= 0 || numSamples > 8192) return;
++    if (numSamples > 8192) return;
+     
+     // RT-SAFE: Snapshot all parameters at block start for consistent processing
+     const BlockParams blockParams = snapshotParametersAtBlockStart();
+@@ -1449,17 +1446,17 @@ void SpectralSynthEngine::processSpectralOscillators(juce::AudioBuffer<float>&
+     
+     // FALLBACK: Original scalar implementation
+     const int numSamples = buffer.getNumSamples();
+-    const int numChannels = buffer.getNumChannels();
+-    
+-    // DIRECT BUFFER ACCESS: Get raw pointers for maximum performance
+-    float* const* channelData = buffer.getArrayOfWritePointers();
++    const int numCh = buffer.getNumChannels();
+     
+-    // SAFETY CHECK: Ensure valid pointers
+-    if (!channelData || numChannels == 0 || numSamples == 0) return;
++    // CHANNEL-SAFE: Early out for edge cases
++    if (numSamples <= 0 || numCh <= 0) return;
++    
++    // CHANNEL-SAFE: Acquire write pointers defensively
++    float* L = buffer.getWritePointer(0);
++    float* R = (numCh > 1) ? buffer.getWritePointer(1) : L;  // mono-safe: fold R into L
++    
++    // UNITY MASK: Load once per block with unity fallback
++    const MaskSnapshot::MaskData* snap = maskSnapshot ? maskSnapshot->getCurrentSnapshot() : nullptr;
+     
+     // TOP-N BAND SELECTION: Collect brightness values for sorting (once per block)
+     for (auto& oscillator : spectralOscillators)
+@@ -1530,10 +1527,9 @@ void SpectralSynthEngine::processSpectralOscillators(juce::AudioBuffer<float>&
+         {
+             // BOUNDS HARDENING: Multiple levels of validation
+             if (i >= static_cast<int>(bandIndices.size())) break;
+-            const int oscIndex = bandIndices[i];
++            const int idx = bandIndices[i];
+             
+-            // INDEX SANITIZATION: Comprehensive unsigned bounds check
+-            if ((unsigned)oscIndex >= (unsigned)blockParams.activeBands) continue;
+-            if ((unsigned)oscIndex >= (unsigned)MAX_SPECTRAL_OSCILLATORS) continue;
++            // EXTRA INDEX GUARDS: Unsigned bounds check (cheap)
++            if ((unsigned)idx >= (unsigned)blockParams.activeBands) continue;
+             
+             #ifndef NDEBUG
+-            jassert(oscIndex >= 0 && oscIndex < MAX_SPECTRAL_OSCILLATORS);
+-            jassert(oscIndex < blockParams.activeBands);
++            jassert(idx >= 0 && idx < MAX_SPECTRAL_OSCILLATORS);
++            jassert(idx < blockParams.activeBands);
+             #endif
+             
+-            auto& oscillator = spectralOscillators[oscIndex];
++            auto& oscillator = spectralOscillators[idx];
+             
+             // Skip if brightness too low (inactive bands filtered out) 
+-            if (bandBrightness[oscIndex] <= 0.0f) continue;
++            if (bandBrightness[idx] <= 0.0f) continue;
+                 
+             if (oscillator.getIsActive())
+             {
+@@ -1554,27 +1550,16 @@ void SpectralSynthEngine::processSpectralOscillators(juce::AudioBuffer<float>&
+                 jassert(std::isfinite(oscSample));
+                 #endif
+                 
+-                // RT-SAFE MASK SAMPLING: Unity mask fallback for null snapshot safety
++                // RT-SAFE MASK SAMPLING: Handle null snap safely
+                 float maskValue = 1.0f;
+-                
+-                // LOAD MASK SNAPSHOT ONCE: Unity fallback integration
+-                const MaskSnapshot::MaskData* snap = maskSnapshot ? maskSnapshot->getCurrentSnapshot() : nullptr;
+-                const bool useUnityMask = (snap == nullptr);
+-                
+-                if (!useUnityMask && blockParams.maskYPrecomputed)
++                if (snap && blockParams.maskYPrecomputed && static_cast<size_t>(idx) < precomputedMaskY.size())
+                 {
+                     // SAFE TIME CALCULATION: Protected against division by zero
+-                    const float timeX = juce::jlimit(0.0f, 1.0f, 
+-                        static_cast<float>(sample) / static_cast<float>(juce::jmax(1, numSamples)));
+-                    
+-                    // BOUNDS GUARD: Validate precomputedMaskY access with unsigned check  
+-                    if (static_cast<size_t>(oscIndex) < precomputedMaskY.size())
+-                    {
+-                        const float maskY = precomputedMaskY[oscIndex];
+-                        
+-                        // NAN/INF PROTECTION: Validate coordinates
+-                        if (std::isfinite(timeX) && std::isfinite(maskY))
+-                        {
+-                            // CLAMP COORDINATES ONCE: Bounds protection
+-                            const float x = juce::jlimit(0.0f, float(MaskSnapshot::MASK_WIDTH - 1), 
+-                                timeX * (MaskSnapshot::MASK_WIDTH - 1));
+-                            const float y = juce::jlimit(0.0f, float(MaskSnapshot::MASK_HEIGHT - 1), 
+-                                maskY * (MaskSnapshot::MASK_HEIGHT - 1));
+-                            maskValue = snap->sampleBilinear(x, y);
+-                            
+-                            // Apply mask parameters with bounds clamping
+-                            const float blend = juce::jlimit(0.0f, 1.0f, maskSnapshot->getMaskBlend());
+-                            const float strength = juce::jlimit(0.0f, 1.0f, maskSnapshot->getMaskStrength());
+-                            maskValue = juce::jlimit(0.0f, 1.0f, maskValue * strength);
+-                            maskValue = juce::jlimit(0.0f, 1.0f, (1.0f - blend) + blend * maskValue);
+-                        }
+-                    }
++                    const float timeNorm = static_cast<float>(sample) / static_cast<float>(juce::jmax(1, numSamples));
++                    const float maskY = precomputedMaskY[idx];
++                    
++                    // CLAMP COORDS ONCE: Bounds protection before sampling
++                    const float x = juce::jlimit(0.0f, float(MaskSnapshot::MASK_WIDTH-1), 
++                        timeNorm * (MaskSnapshot::MASK_WIDTH-1));
++                    const float y = juce::jlimit(0.0f, float(MaskSnapshot::MASK_HEIGHT-1), 
++                        maskY * (MaskSnapshot::MASK_HEIGHT-1));
++                    
++                    maskValue = snap->sampleBilinear(x, y);
+                 }
+-                // UNITY MASK FALLBACK: No branch in hot loop - maskValue stays 1.0f
++                // Unity fallback: maskValue stays 1.0f
+                     
+                 // DEBUG ASSERTION: NaN/Inf protection in debug builds
+                 jassert(std::isfinite(maskValue));
+@@ -1613,11 +1598,12 @@ void SpectralSynthEngine::processSpectralOscillators(juce::AudioBuffer<float>&
+         jassert(std::abs(rightSample) < 10.0f); // Reasonable headroom check
+         #endif
+         
+-        // DIRECT BUFFER WRITE: Bypass JUCE AudioBuffer bounds checking
+-        if (channelData[0]) {
+-            channelData[0][sample] += leftSample;
++        // CHANNEL-SAFE WRITES: Accumulate output per-sample
++        if (numCh > 1) { 
++            L[sample] += leftSample; 
++            R[sample] += rightSample; 
+         }
+-        
+-        if (numChannels > 1 && channelData[1]) {
+-            channelData[1][sample] += rightSample;
++        else { 
++            L[sample] += (leftSample + rightSample);  // mono fold
+         }
+     }
+@@ -1657,9 +1643,9 @@ void SpectralSynthEngine::processSpectralOscillators(juce::AudioBuffer<float>&
+     // ULTRA-FAST PERFORMANCE CHECK: Minimal overhead monitoring
+     static uint32_t sampleCounter = 0;
+     if ((++sampleCounter & 0x3FF) == 0) {  // Every 1024 samples
+-        const float maxSample = std::max(
+-            channelData[0] ? *std::max_element(channelData[0], channelData[0] + numSamples) : 0.0f,
+-            (numChannels > 1 && channelData[1]) ? *std::max_element(channelData[1], channelData[1] + numSamples) : 0.0f
+-        );
++        const float maxL = L ? *std::max_element(L, L + numSamples) : 0.0f;
++        const float maxR = (numCh > 1 && R != L) ? *std::max_element(R, R + numSamples) : 0.0f;
++        const float maxSample = std::max(maxL, maxR);
+         
+         if (maxSample > 0.001f) {
+             DBG("✅ OPTIMIZED AUDIO: Max sample " << maxSample << ", Active oscillators: " << activeOscillatorCount.load());

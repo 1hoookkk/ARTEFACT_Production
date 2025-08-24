@@ -1,0 +1,46 @@
+# Build artifacts
+build/
+*.log
+*_log.txt
+build_results.txt
+
+# Notification system logs
+logs/
+logs/*.log
+logs/**/*.log
+
+# IDE files
+.vscode/
+.vs/
+*.user
+
+# Test results
+test_results_*/
+test_rt_safety_*/
+
+# Backup files
+*.backup
+*.backup_*
+Source*.zip
+
+# Temp files
+nul
+*.tmp
+
+# Runtime artifacts (allow specific ones)
+runtime/*.png
+runtime/*.json
+!runtime/STATUS.md
+
+# Archive directory (track structure but not all content)
+_archive/*/build_artifacts/
+_archive/*/temp_docs/
+_archive/*/test_results/
+
+# Large files that should not be tracked
+*.zip
+*.pdb
+build-juce8/
+*.exe
+*.dll
+*.vst3

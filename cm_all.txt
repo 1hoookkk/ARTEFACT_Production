@@ -1,0 +1,52 @@
+10:option(BUILD_LEGACY "Build legacy sources that reference pre-refactor APIs" OFF)
+11:option(WARNINGS_AS_ERRORS "Treat warnings as errors (CI recommended)" OFF)
+17:set(JUCE_VERSION "8.0.8")
+18:message(STATUS "Using JUCE version: ${JUCE_VERSION}")
+29:    PRODUCT_NAME "SpectralCanvas Pro"
+30:    COMPANY_NAME "SpectralAudio"
+31:    BUNDLE_ID "com.spectralaudio.spectralcanvas"
+32:    PLUGIN_MANUFACTURER_CODE "SpAu"
+33:    PLUGIN_CODE "SpCv"
+35:    VST3_CATEGORIES "Instrument" "Synthesizer"
+44:option(BUILD_EMU_ROMPLER "Build EMU Rompler version" ON)
+45:option(SC_MINIMAL_EDITOR_DIAG "Build with minimal editor for isolation" OFF)
+46:option(SC_MVP_UI "Build minimal MVP UI instead of full UI" ON)
+150:message(STATUS "Building SpectralCanvas Pro VST3 Plugin with complete paint-to-audio system")
+202:    PRODUCT_NAME "SpectralCanvas Render Test")
+235:    PRODUCT_NAME "SpectralCanvas Simple Test")
+258:    PRODUCT_NAME "SpectralCanvas Demo Recorder")
+280:option(BUILD_HOST_HARNESS "Build the HostHarness tool" OFF)
+287:    PRODUCT_NAME "Constructor Only Test")
+302:    JucePlugin_Name="SpectralCanvas Pro"
+319:option(BUILD_OFFLINE_RENDER "Build OfflineRender demo generator" ON)
+322:        PRODUCT_NAME "SpectralCanvas OfflineRender")
+354:option(BUILD_TESTS "Build unit tests" ON)
+357:        PRODUCT_NAME "SpectralCanvas RT Tests")
+415:        LINK_FLAGS_RELEASE "/DEBUG:NONE"
+430:message(STATUS "")
+431:message(STATUS "=================================")
+432:message(STATUS "SpectralCanvas - Clean Foundation")
+433:message(STATUS "=================================")
+434:message(STATUS "Version: ${PROJECT_VERSION}")
+435:message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
+436:message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+437:message(STATUS "")
+438:message(STATUS "Following Best Practices:")
+439:message(STATUS "  ✓ Minimal dependencies")
+440:message(STATUS "  ✓ SOLID principles")
+441:message(STATUS "  ✓ RAII resource management")
+442:message(STATUS "  ✓ Thread-safe design")
+443:message(STATUS "  ✓ Clean architecture")
+444:message(STATUS "")
+446:option(SC_LEGACY "Include legacy/archived modules in the build" OFF)
+450:    if(_src MATCHES "/_archive/" OR _src MATCHES "\\\\_archive\\\\")
+451:        message(FATAL_ERROR "Archived file referenced in build: ${_src}")
+457:    message(STATUS "SC_LEGACY=ON: Legacy/archived modules may be added explicitly here.")
+462:set(SC_ASSETS_FONT_DIR "${CMAKE_SOURCE_DIR}/Assets/fonts")
+463:if(EXISTS "${SC_ASSETS_FONT_DIR}")
+465:        "${SC_ASSETS_FONT_DIR}/*.ttf"
+466:        "${SC_ASSETS_FONT_DIR}/*.otf")
+468:        message(STATUS "Embedding fonts: ${SC_FONT_FILES}")
+478:        message(STATUS "No fonts found in Assets/fonts (skipping embedded assets)")
+487:option(BUILD_TESTS "Build unit/integration tests" ON)
+490:        PRODUCT_NAME "SpectralCanvas Tests")

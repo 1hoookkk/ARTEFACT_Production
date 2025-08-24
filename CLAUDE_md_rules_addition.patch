@@ -1,0 +1,11 @@
+Add missing RULE memories to CLAUDE.md:
+
+Lines to add after line 298:
+- # RULE: Simple Loop v5.0 only — RECON → SPEC → PATCH (diff-only) → VERIFY (ctest)
+- # RULE: Only reader-agent and maker-agent. No new agents without explicit approval.
+
+These rules establish:
+1. Mandatory workflow pattern for all changes
+2. Minimal agent set to prevent over-agenting and role overlap
+
+User should manually add these lines to CLAUDE.md after line 298.

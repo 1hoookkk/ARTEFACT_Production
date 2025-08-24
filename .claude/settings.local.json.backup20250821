@@ -1,0 +1,10 @@
+﻿{
+  "version": 1,
+  "autoUpdate": true,
+  "agentsDir": ".claude/agents",
+  "hooks": {},
+  "ui": {
+    "telemetry": true
+  }
+}
+

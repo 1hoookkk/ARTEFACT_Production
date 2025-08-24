@@ -1,0 +1,26 @@
+E-mu Audity 2000 Style Texture Assets
+Generated on: generate_emu_textures.py
+
+Theme Colors:
+- Panel: #345E78
+- Bezel: #3D4349  
+- LCD: #8DFF6A
+
+Generated Assets:
+1. panel_powdercoat.png (256x256) - Tileable speckled metal panel texture
+2. bezel_9slice.png (48x48) - Dark bezel with 12px insets for 9-slice
+3. button_up.png (80x32) - Beveled button in up state
+4. button_down.png (80x32) - Pressed button state  
+5. knob_cap.png (64x64) - Matte plastic knob with indicator
+6. led_on.png (8x8) - Bright red LED dot
+7. led_off.png (8x8) - Dark LED dot
+8. lcd_strip.png (512x32) - Lime green LCD background with texture
+9. meter_on.png (6x14) - LED meter segment lit (green)
+10. meter_off.png (6x14) - LED meter segment dark
+
+Usage Notes:
+- panel_powdercoat.png is tileable for large background areas
+- bezel_9slice.png uses 12px insets for proper 9-slice scaling
+- Button states can be swapped based on interaction
+- Knob indicator points upward (12 o'clock position)
+- LED and meter assets support on/off states for visual feedback

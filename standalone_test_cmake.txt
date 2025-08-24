@@ -1,0 +1,41 @@
+cmake_minimum_required(VERSION 3.22)
+project(RenderSineFFTTestStandalone VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Add JUCE (assumes JUCE is in External/JUCE)
+add_subdirectory(External/JUCE)
+
+# Create standalone test executable
+add_executable(RenderSineFFTTestStandalone
+    Source/Tests/RenderSineFFTTest.cpp
+    Source/Core/SpectralSynthEngine.cpp
+    Source/Core/SpectralSynthEngine.h
+    Source/Core/EMUFilter.cpp
+    Source/Core/EMUFilter.h
+    Source/Core/ColorToSpectralMapper.cpp
+    Source/Core/ColorToSpectralMapper.h
+    Source/Core/AtomicOscillator.cpp
+    Source/Core/AtomicOscillator.h
+    Source/Core/Config.cpp
+    Source/Core/Config.h
+)
+
+# Add main function wrapper for standalone test
+target_sources(RenderSineFFTTestStandalone PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test_main.cpp)
+
+# Link JUCE modules
+target_link_libraries(RenderSineFFTTestStandalone PRIVATE
+    juce::juce_core
+    juce::juce_audio_basics
+    juce::juce_dsp
+    juce::juce_graphics
+)
+
+# Define for standalone application
+target_compile_definitions(RenderSineFFTTestStandalone PRIVATE
+    JUCE_STANDALONE_APPLICATION=1
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+)

@@ -1,0 +1,223 @@
+# STFT Windowing Auditor - DSP Frequency Oracle Variant
+# Specialized for spectral processing window function validation
+
+name: stft-windowing-auditor
+parent: dsp-frequency-oracle
+version: "1.0.0"
+specialization: "STFT windowing and spectral processing validation"
+
+description: >
+  Specialized variant focused on Short-Time Fourier Transform implementation
+  correctness in SpectralCanvas Pro. Validates window function selection,
+  overlap ratios, phase coherence, and frequency domain processing for
+  real-time spectral synthesis applications.
+
+# Performance Improvement Projection
+performance_improvement:
+  precision_gain: "+0.18 (0.88 → 1.06)"
+  speed_impact: "+30% analysis time"
+  coverage_expansion: "STFT-specific patterns, windowing function analysis, overlap validation"
+  domain_expertise: "Deep FFT/spectral processing knowledge"
+
+# Enhanced Trigger Conditions
+additional_triggers:
+  diff_path_matches:
+    - "Source/Spectral/**"
+    - "Source/Core/SpectralSynthEngine.*"
+    - "Source/Core/SpectralPath.*"
+    - "Source/Tests/TestSTFT*"
+    - "Source/Tests/RenderSine*"
+  diff_contains:
+    - "STFT"
+    - "FFT"
+    - "window"
+    - "overlap"
+    - "hopSize"
+    - "frameSize"
+    - "spectral"
+    - "magnitude"
+    - "phase"
+
+# Specialized Rules
+specialized_rules:
+  window_function_correctness:
+    window_type_validation:
+      description: "Validate appropriate window function for spectral synthesis"
+      approved_windows:
+        - "hann"
+        - "hamming"
+        - "blackman"
+        - "kaiser"
+      violations:
+        - "rectangular.*window"
+        - "bartlett.*synthesis"  # Poor for synthesis
+      severity: high
+      
+    overlap_ratio_constraints:
+      description: "STFT overlap should be 50% or 75% for synthesis"
+      required_ratios: ["0.5", "0.75"]
+      violations:
+        - "overlap.*0\\.[1-4]"  # Too little overlap
+        - "overlap.*0\\.[8-9]"  # Too much overlap
+      severity: medium
+      
+    cola_compliance:
+      description: "Constant Overlap-Add (COLA) constraint must be satisfied"
+      check_patterns:
+        - "COLA.*compliant"
+        - "perfect.*reconstruction"
+      violations:
+        - "window.*sum.*!.*constant"
+      severity: critical
+
+  spectral_processing_safety:
+    magnitude_phase_consistency:
+      description: "Magnitude and phase arrays must have consistent sizes"
+      required_patterns:
+        - "magnitude\\.size.*==.*phase\\.size"
+        - "assert.*mag.*phase.*same"
+      violations:
+        - "magnitude\\[.*\\].*phase\\[different"
+      severity: critical
+      
+    frequency_bin_validation:
+      description: "Frequency bin indexing must be within FFT bounds"
+      check_patterns:
+        - "bin.*<.*fftSize"
+        - "freqIndex.*bounds"
+      violations:
+        - "bin\\s*>=\\s*fftSize"
+        - "freqBin\\[.*\\].*unchecked"
+      severity: high
+      
+    dc_nyquist_handling:
+      description: "DC and Nyquist bins require special handling"
+      required_patterns:
+        - "bin.*==.*0.*special"
+        - "nyquist.*bin.*real"
+      severity: medium
+
+  phase_coherence:
+    synthesis_phase_tracking:
+      description: "Phase must be tracked for spectral synthesis"
+      required_patterns:
+        - "phase.*tracking"
+        - "phase.*accumulator"
+        - "unwrap.*phase"
+      violations:
+        - "random.*phase"
+        - "zero.*phase.*synthesis"
+      severity: high
+      
+    hop_size_phase_relationship:
+      description: "Phase advance must match hop size"
+      formula_check: "phase_advance = 2*pi*freq*hopSize/sampleRate"
+      violations:
+        - "phase.*advance.*wrong.*formula"
+      severity: medium
+
+# STFT-Specific Analysis
+stft_analysis:
+  windowing_artifacts:
+    spectral_leakage: "Check for proper window function to minimize leakage"
+    scalloping_loss: "Validate frequency resolution vs time resolution tradeoff"
+    
+  synthesis_quality:
+    perfect_reconstruction: "Verify analysis/synthesis roundtrip accuracy"
+    artifacts_detection: "Check for aliasing, clicking, or modulation artifacts"
+    
+  performance_optimization:
+    fft_efficiency: "Validate power-of-2 FFT sizes for performance"
+    vectorization: "Check for SIMD-friendly processing patterns"
+
+# Enhanced KPIs
+additional_kpis:
+  reconstruction_error: "< 1e-6"        # Perfect reconstruction accuracy
+  phase_coherence_score: "> 0.95"      # Phase tracking quality
+  spectral_artifacts: "< 0.1%"         # Artifact detection rate
+  window_cola_compliance: "= 1.0"      # Perfect COLA compliance
+
+# Test Fixtures
+test_fixtures:
+  - name: "rectangular_window_violation"
+    code: |
+      void setupSTFT() {
+          window = createRectangularWindow(frameSize);  // VIOLATION
+          // Rectangular window causes spectral leakage
+      }
+    expected_violations: ["Inappropriate window function for synthesis"]
+    
+  - name: "insufficient_overlap"
+    code: |
+      void configureSTFT() {
+          hopSize = frameSize * 0.9f;  // VIOLATION - only 10% overlap
+          overlap = 0.1f;
+      }
+    expected_violations: ["Insufficient overlap for synthesis quality"]
+    
+  - name: "proper_stft_setup"
+    code: |
+      void initializeSTFT() {
+          window = createHannWindow(frameSize);  // OK
+          hopSize = frameSize / 2;               // OK - 50% overlap
+          // Verify COLA compliance
+          assert(verifyCOLA(window, hopSize));
+      }
+    expected_violations: []
+
+  - name: "phase_tracking_missing"
+    code: |
+      void synthesizeSpectrum() {
+          for (int bin = 0; bin < numBins; ++bin) {
+              spectrum[bin] = magnitude[bin];  // VIOLATION - no phase
+          }
+      }
+    expected_violations: ["Missing phase information for synthesis"]
+
+  - name: "magnitude_phase_size_mismatch"
+    code: |
+      void processSpectrum() {
+          magnitude.resize(fftSize/2);
+          phase.resize(fftSize);  // VIOLATION - size mismatch
+      }
+    expected_violations: ["Magnitude and phase array size inconsistency"]
+
+# Output Schema Extension
+output_extensions:
+  stft_quality:
+    window_function_score: number
+    overlap_efficiency: number
+    cola_compliance_rating: number
+    phase_coherence_quality: number
+  spectral_violations:
+    windowing_violations: array
+    overlap_violations: array
+    phase_tracking_violations: array
+    reconstruction_quality_issues: array
+
+# Algorithm Validation
+algorithm_validation:
+  golden_reference_tests:
+    sine_wave_reconstruction: "Perfect reconstruction of pure tones"
+    chirp_signal_analysis: "Frequency sweep tracking accuracy"
+    noise_floor_measurement: "Quantization noise and artifacts"
+    
+  boundary_condition_tests:
+    dc_component_handling: "Zero frequency bin special case"
+    nyquist_frequency: "Nyquist bin real-valued constraint"
+    edge_frame_processing: "First and last frame handling"
+
+# Deployment Trigger
+deployment_trigger:
+  code_changes: "Changes to STFT processing, windowing, or spectral synthesis"
+  quality_degradation: "Reconstruction error > 1e-6 or phase coherence < 0.95"
+  performance_issues: "STFT processing time exceeding real-time constraints"
+
+# Integration Notes
+justification: |
+  Core dsp-frequency-oracle achieved 100% logarithmic mapping validation but
+  lacks deep STFT expertise. Repository analysis reveals 8 files with spectral
+  processing and window function usage. Recent commits show STFT implementation
+  changes with potential phase coherence and windowing issues. Specialized
+  variant needed for spectral processing correctness with emphasis on synthesis
+  quality and perfect reconstruction validation.

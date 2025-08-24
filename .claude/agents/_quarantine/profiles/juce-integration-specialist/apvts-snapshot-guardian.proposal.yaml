@@ -1,0 +1,239 @@
+# APVTS Snapshot Guardian - JUCE Integration Specialist Variant
+# Specialized for AudioProcessorValueTreeState snapshot validation
+
+name: apvts-snapshot-guardian
+parent: juce-integration-specialist
+version: "1.0.0"
+specialization: "APVTS parameter snapshot and automation validation"
+
+description: >
+  Specialized variant focused on AudioProcessorValueTreeState usage patterns
+  in SpectralCanvas Pro. Validates atomic parameter access, snapshot timing,
+  automation thread safety, and parameter denormalization correctness for
+  real-time audio processing with UI parameter changes.
+
+# Performance Improvement Projection
+performance_improvement:
+  precision_gain: "+0.22 (0.78 → 1.00)"
+  speed_impact: "+20% analysis time"
+  coverage_expansion: "APVTS-specific patterns, parameter automation safety, snapshot validation"
+  automation_expertise: "Deep JUCE parameter system knowledge"
+
+# Enhanced Trigger Conditions
+additional_triggers:
+  diff_path_matches:
+    - "Source/Core/PluginProcessor.*"
+    - "Source/ParamIDs.*"
+    - "Source/Core/Config.*"
+    - "Source/Tests/TestAPVTS*"
+    - "Source/Tests/TestProcessor*"
+  diff_contains:
+    - "getRawParameterValue"
+    - "getParameterAsValue"
+    - "APVTS"
+    - "AudioProcessorValueTreeState"
+    - "ParameterLayout"
+    - "denormalise"
+    - "normalise"
+    - "automation"
+
+# Specialized Rules
+specialized_rules:
+  parameter_access_safety:
+    atomic_parameter_reads:
+      description: "Parameters must be read atomically in processBlock"
+      required_patterns:
+        - "getRawParameterValue.*once.*block"
+        - "parameter.*snapshot.*start"
+      violations:
+        - "getRawParameterValue.*loop"
+        - "getParameterAsValue.*audio.*thread"
+      severity: critical
+      
+    ui_thread_parameter_updates:
+      description: "Parameter changes should only occur on UI/message thread"
+      check_patterns:
+        - "setParameter.*message.*thread"
+        - "parameterChanged.*UI"
+      violations:
+        - "setParameter.*processBlock"
+        - "parameterChanged.*audio.*thread"
+      severity: critical
+      
+    denormalization_consistency:
+      description: "Parameter denormalization must be consistent"
+      required_patterns:
+        - "denormalise.*parameter"
+        - "range\\.convertFrom0to1"
+      violations:
+        - "parameter.*raw.*value.*direct"
+        - "0to1.*manual.*conversion"
+      severity: high
+
+  parameter_lifecycle:
+    initialization_order:
+      description: "APVTS must be initialized before audio processing"
+      required_patterns:
+        - "APVTS.*constructor"
+        - "createParameterLayout.*before.*prepare"
+      violations:
+        - "getRawParameterValue.*uninitialized"
+      severity: critical
+      
+    automation_recording:
+      description: "Parameter automation must be properly recorded"
+      check_patterns:
+        - "setValueNotifyingHost"
+        - "beginParameterChangeGesture"
+        - "endParameterChangeGesture"
+      violations:
+        - "direct.*parameter.*change.*host"
+      severity: medium
+      
+    state_serialization:
+      description: "Parameter state must be serializable"
+      required_patterns:
+        - "getStateInformation"
+        - "setStateInformation"
+        - "copyState"
+      severity: low
+
+  real_time_constraints:
+    parameter_smoothing:
+      description: "Rapidly changing parameters should be smoothed"
+      check_patterns:
+        - "LinearSmoothedValue"
+        - "SmoothedValue"
+        - "parameter.*interpolation"
+      violations:
+        - "filter.*cutoff.*direct"
+        - "gain.*parameter.*raw"
+      severity: medium
+      
+    cache_efficiency:
+      description: "Parameter reads should be cache-friendly"
+      optimization_patterns:
+        - "batch.*parameter.*reads"
+        - "parameter.*snapshot.*struct"
+      violations:
+        - "scattered.*parameter.*access"
+      severity: low
+
+# APVTS-Specific Analysis
+apvts_analysis:
+  parameter_layout_validation:
+    parameter_ranges: "Validate min/max/default values are sensible"
+    unit_suffixes: "Check parameter units and display formatting"
+    automation_curves: "Validate skew factors and logarithmic scaling"
+    
+  snapshot_timing:
+    block_start_reads: "Parameters read once at processBlock start"
+    consistency_checks: "All related parameters read atomically"
+    
+  thread_safety_verification:
+    ui_audio_separation: "No parameter writes from audio thread"
+    host_automation_safety: "Proper host automation handling"
+
+# Enhanced KPIs
+additional_kpis:
+  parameter_read_efficiency: "> 0.95"   # Single read per block compliance
+  automation_safety_score: "> 0.98"    # Thread safety compliance
+  denormalization_accuracy: "> 0.999"  # Parameter value accuracy
+  snapshot_timing_violations: "= 0"    # Critical timing violations
+
+# Test Fixtures
+test_fixtures:
+  - name: "parameter_read_in_loop"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
+              float gain = *apvts.getRawParameterValue("gain");  // VIOLATION
+              buffer.setSample(0, sample, input * gain);
+          }
+      }
+    expected_violations: ["Parameter read in audio processing loop"]
+    
+  - name: "parameter_write_audio_thread"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          if (condition) {
+              apvts.getParameter("gain")->setValueNotifyingHost(0.5f);  // VIOLATION
+          }
+      }
+    expected_violations: ["Parameter write from audio thread"]
+    
+  - name: "correct_parameter_snapshot"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          // Read all parameters once at block start
+          float gain = *apvts.getRawParameterValue("gain");
+          float cutoff = apvts.getParameterAsValue("cutoff").getValue();
+          float resonance = *apvts.getRawParameterValue("resonance");
+          
+          // Use cached values throughout block
+          filter.setParams(cutoff, resonance);
+          buffer.applyGain(gain);
+      }
+    expected_violations: []
+
+  - name: "missing_parameter_smoothing"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          float cutoff = *apvts.getRawParameterValue("cutoff");
+          filter.setCutoff(cutoff);  // VIOLATION - no smoothing for filter
+      }
+    expected_violations: ["Missing parameter smoothing for filter parameter"]
+
+  - name: "inconsistent_denormalization"
+    code: |
+      void setupParameters() {
+          // Manual denormalization - should use APVTS range
+          float freq = paramValue * 19980.0f + 20.0f;  // VIOLATION
+          // Should use: range.convertFrom0to1(paramValue)
+      }
+    expected_violations: ["Manual parameter denormalization"]
+
+# Output Schema Extension
+output_extensions:
+  apvts_health:
+    parameter_access_efficiency: number
+    automation_safety_rating: number
+    snapshot_consistency_score: number
+    denormalization_accuracy: number
+  parameter_violations:
+    read_timing_violations: array
+    write_safety_violations: array
+    automation_handling_violations: array
+    denormalization_inconsistencies: array
+
+# Parameter System Validation
+parameter_validation:
+  layout_correctness:
+    range_validation: "Parameter min/max/default values are valid"
+    unit_consistency: "Parameter units match expected audio conventions"
+    skew_factor_appropriateness: "Logarithmic scaling for frequency parameters"
+    
+  automation_compatibility:
+    host_integration: "Parameters work correctly with DAW automation"
+    gesture_handling: "Parameter gestures properly communicated to host"
+    undo_redo_support: "Parameter changes support host undo/redo"
+    
+  performance_optimization:
+    read_patterns: "Efficient parameter access patterns"
+    memory_layout: "Cache-friendly parameter organization"
+    smoothing_efficiency: "Optimal parameter smoothing implementation"
+
+# Deployment Trigger
+deployment_trigger:
+  code_changes: "Changes to PluginProcessor, parameter handling, or APVTS usage"
+  automation_issues: "Host automation problems or parameter glitches"
+  performance_degradation: "Parameter access inefficiency or timing violations"
+
+# Integration Notes
+justification: |
+  Core juce-integration-specialist found good APVTS patterns but lacks deep
+  parameter system expertise. Repository analysis shows 25+ parameter definitions
+  and complex APVTS usage across PluginProcessor and related files. Recent commits
+  indicate parameter system evolution with potential thread safety and automation
+  issues. Specialized variant needed for APVTS correctness with emphasis on
+  real-time parameter access patterns and automation safety validation.

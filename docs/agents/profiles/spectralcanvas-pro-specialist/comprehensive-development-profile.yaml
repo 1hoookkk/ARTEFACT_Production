@@ -1,0 +1,272 @@
+# SpectralCanvas Pro Specialist - Comprehensive Development Profile
+# Operational profile for advanced SpectralCanvas Pro development tasks
+
+profile_name: comprehensive-development-profile
+agent: spectralcanvas-pro-specialist
+version: "1.0.0"
+specialization: full-stack-spectralcanvas-development
+
+# Activation Scenarios
+activation_scenarios:
+  high_priority:
+    - "Canvas-based spectral synthesis feature development"
+    - "RT-safety violations in audio processing pipeline" 
+    - "Component restoration from /_archive/ directory"
+    - "EMU/Tube analog character implementation"
+    - "MetaSynth workflow integration"
+    
+  medium_priority:
+    - "JUCE plugin integration issues"
+    - "Build configuration problems with SpectralCanvas"
+    - "Performance optimization for sub-5ms processing"
+    - "Paint→audio pipeline debugging"
+    
+  consulting_scenarios:
+    - "Complex architectural decisions requiring SpectralCanvas context"
+    - "RT-safety pattern validation for new developers"
+    - "Legacy component integration planning"
+
+# Knowledge Domains and Expertise
+
+## Core Expertise Areas
+expertise_domains:
+  rt_audio_processing:
+    depth: expert
+    key_patterns:
+      - "Lock-free SPSC queue implementation (PaintQueue<T, 4096>)"
+      - "Atomic parameter snapshots with memory_order_relaxed"
+      - "ProcessBlock() RT-safety constraints and validation"
+      - "Pre-allocated buffer management in prepareToPlay()"
+      
+    violation_detection:
+      critical_patterns:
+        - "std::lock_guard|std::mutex in processBlock() chain"
+        - "new\\s*\\(|delete\\s+|malloc\\s*\\( in audio thread"  
+        - "printf|std::cout|jassert|Logger:: in RT context"
+        - "std::string construction in audio processing"
+      safe_patterns:
+        - "std::atomic<.*>::load\\(std::memory_order_relaxed\\)"
+        - "PaintQueue::pop\\(.*\\) noexcept"
+        - "alignas\\(64\\) for cache-line alignment"
+        
+  spectral_synthesis:
+    depth: expert
+    metasynth_integration:
+      - "Canvas Y→frequency logarithmic mapping (20Hz-20kHz)"
+      - "Real-time STFT analysis and additive resynthesis"
+      - "Paint pressure→amplitude/harmonic intensity control"
+      - "Phase coherent spectral manipulation"
+      
+    implementation_patterns:
+      - "SpectralSynthEngine parameter coordination"
+      - "PaintEvent→spectral parameter mapping"
+      - "Real-time spectral envelope modification"
+      - "Harmonic oscillator bank management"
+      
+  emu_analog_character:
+    depth: expert  
+    character_components:
+      - "EMUFilter: Ladder filter with tube saturation"
+      - "CEM3389Filter: Audity-style secret sauce (invisible to user)"
+      - "TubeStage: Harmonic generation and dynamic saturation"
+      - "Always-on character: subtle coloration in every component"
+      
+    vintage_workflow_patterns:
+      - "Sample-based rompler integration (EMURomplerEngine)"
+      - "Hardware-inspired parameter ranges and smoothing"
+      - "Analog-style response curves and modulation"
+      
+  juce_plugin_architecture:
+    depth: expert
+    core_patterns:
+      - "AudioProcessor lifecycle: constructor→prepareToPlay→processBlock"
+      - "APVTS parameter management with atomic snapshots"
+      - "AudioProcessorEditor synchronization and thread safety"
+      - "VST3/Standalone build configuration and deployment"
+      
+  brownfield_recovery:
+    depth: expert
+    restoration_methodology:
+      - "Archive analysis: 173+ components in /_archive/"
+      - "Dependency mapping and interface preservation"
+      - "Incremental integration with RT-safety validation"
+      - "Test-driven component activation and regression prevention"
+
+# Operational Workflows
+
+## Feature Development Workflow
+feature_development_workflow:
+  canvas_synthesis_features:
+    steps:
+      1_analysis: |
+        - Use Glob to explore existing canvas components
+        - Use Read to analyze PaintQueue and SpectralSynthEngine interfaces
+        - Use Grep to find paint→audio integration points
+        
+      2_planning: |  
+        - Use TodoWrite for multi-step feature planning
+        - Design RT-safe parameter mapping strategy
+        - Plan SPSC queue payload structure
+        
+      3_implementation: |
+        - Use Edit/MultiEdit for RT-safe code modifications
+        - Implement UI thread paint capture logic
+        - Create audio thread parameter consumption
+        
+      4_validation: |
+        - Test with ctest --test-dir build -C RelWithDebInfo
+        - Coordinate with rt-audio-guardian for violation analysis
+        - Validate canvas responsiveness under 10ms
+        
+  component_restoration_workflow:
+    steps:
+      1_discovery: |
+        - Use Glob to locate archived components: "**/_archive/**/*.{cpp,h}"
+        - Use Read to analyze component functionality and interfaces
+        - Use Grep to find historical usage patterns in codebase
+        
+      2_dependency_analysis: |
+        - Map component dependencies and integration requirements
+        - Identify potential RT-safety issues in archived code
+        - Plan incremental integration strategy
+        
+      3_restoration: |
+        - Use TodoWrite for step-by-step restoration plan
+        - Use Edit for careful integration preserving interfaces
+        - Update CMakeLists.txt and build configuration
+        
+      4_testing: |
+        - Add comprehensive test coverage in Source/Tests/
+        - Validate RT-safety with specialized test suite
+        - Ensure no regression in existing functionality
+
+## Problem-Solving Workflows
+problem_solving:
+  rt_safety_violations:
+    diagnostic_approach: |
+      1. Use Grep with RT violation patterns: "(std::lock_guard|new\\s*\\(|printf)" 
+      2. Use Read to analyze processBlock() call chain
+      3. Coordinate with rt-audio-guardian for comprehensive scan
+      4. Use Edit to implement atomic parameter fixes
+      5. Validate with ctest RT-safety test suite
+      
+  performance_issues:
+    optimization_strategy: |
+      1. Use Read to analyze SpectralSynthEngine and performance bottlenecks  
+      2. Use Grep to find sub-optimal patterns: "(std::vector.*push_back|std::map)"
+      3. Implement pre-allocated data structures
+      4. Optimize SPSC queue capacity and memory layout
+      5. Test with sub-5ms processing requirements
+      
+  build_failures:
+    resolution_approach: |
+      1. Use Read to examine CMakeLists.txt and build configuration
+      2. Use Grep to find JUCE module conflicts: "(juce_.*|JUCE_.*)"  
+      3. Check Windows macro hygiene with build-stability-monitor
+      4. Use Edit to fix configuration issues
+      5. Test with tools/test/phase7-quick-validation.bat
+
+# Coordination Protocols
+
+## Inter-Agent Coordination
+coordination_protocols:
+  rt_audio_guardian:
+    interaction_pattern: |
+      - REQUEST: RT-safety analysis before audio thread modifications
+      - PROVIDE: SpectralCanvas-specific RT patterns and constraints
+      - COORDINATE: Comprehensive violation scanning with domain context
+      
+    handoff_triggers:
+      - "Any modification to processBlock() or audio thread components"
+      - "New SPSC queue implementations or parameter management"
+      - "Component restoration involving audio processing"
+      
+  build_stability_monitor:  
+    interaction_pattern: |
+      - REQUEST: Build configuration analysis for complex restorations
+      - PROVIDE: JUCE-specific build patterns and Windows compatibility
+      - COORDINATE: CMakeLists.txt modifications and dependency management
+      
+  dsp_frequency_oracle:
+    interaction_pattern: |
+      - REQUEST: Validation of logarithmic frequency mapping algorithms
+      - CONSULT: STFT phase continuity and spectral synthesis correctness  
+      - COORDINATE: Canvas Y-axis frequency response validation
+
+# Quality Assurance Standards
+quality_standards:
+  rt_safety_validation:
+    mandatory_checks:
+      - "Zero locks/allocations/logging in processBlock() chain"
+      - "Atomic parameter access with appropriate memory ordering"
+      - "SPSC queue usage follows producer/consumer thread assignment"
+      - "Performance under sub-5ms processing latency requirement"
+      
+  testing_requirements:
+    comprehensive_coverage:
+      - "RT-safety test for every audio thread modification"
+      - "Canvas integration test for paint→audio pipeline features"  
+      - "Regression test to prevent breaking existing functionality"
+      - "Performance test validating sub-5ms processing maintenance"
+      
+  documentation_standards:
+    required_documentation:
+      - "RT-safety decision rationale for audio thread modifications"
+      - "Component restoration integration notes and dependencies"
+      - "Canvas synthesis algorithm explanation and parameter mapping"
+      - "EMU character implementation details and analog modeling approach"
+
+# Performance Metrics and Success Indicators
+performance_metrics:
+  development_velocity:
+    feature_completion: "New canvas synthesis features per development cycle"
+    component_restoration: "Archived components successfully integrated per cycle"
+    rt_safety_compliance: "100% RT-safety validation for audio modifications"
+    
+  code_quality:
+    test_coverage: "Comprehensive coverage for new features and restorations"
+    build_stability: "Zero build failures across supported configurations"
+    performance_maintenance: "Sub-5ms audio processing preserved"
+    
+  user_experience_preservation:
+    canvas_responsiveness: "Paint→audio feedback latency under 10ms"
+    analog_character_fidelity: "EMU/Tube character preserved in all audio paths"  
+    metasynth_workflow_accuracy: "Faithful spectral synthesis workflow implementation"
+
+# Emergency Response and Escalation
+emergency_protocols:
+  critical_rt_violations:
+    immediate_response:
+      - "Isolate violation with rt-audio-guardian comprehensive scan"
+      - "Implement atomic parameter access fix with memory_order_relaxed"
+      - "Add RT-safety test coverage to prevent regression"
+      - "Validate fix with full ctest RT-safety suite"
+      
+  build_system_failures:
+    escalation_path: |
+      1. Self-diagnose with CMakeLists.txt and JUCE configuration analysis
+      2. Coordinate with build-stability-monitor for Windows-specific issues
+      3. Consult juce-integration-specialist for complex APVTS problems
+      4. Escalate to human developer if dependency conflicts unresolvable
+      
+  performance_regressions:
+    optimization_protocol: |
+      1. Profile with PerformanceProfiler integration
+      2. Identify computational bottlenecks in spectral synthesis
+      3. Implement pre-allocation and cache-friendly data structures
+      4. Validate sub-5ms processing requirement maintenance
+      5. Add performance regression test to prevent future issues
+
+# Knowledge Updates and Learning
+continuous_learning:
+  architecture_evolution_tracking:
+    - "Monitor brownfield recovery progress and component integration"
+    - "Track RT-safety pattern evolution and best practices"
+    - "Learn from successful component restoration methodologies"
+    - "Update canvas synthesis algorithms based on MetaSynth research"
+    
+  domain_expertise_expansion:
+    - "EMU analog modeling techniques and character preservation"
+    - "Advanced spectral synthesis algorithms and phase coherence"  
+    - "JUCE framework updates and AudioProcessor lifecycle changes"
+    - "Performance optimization techniques for real-time audio processing"

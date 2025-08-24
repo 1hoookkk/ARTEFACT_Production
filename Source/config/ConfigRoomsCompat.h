@@ -1,0 +1,22 @@
+#pragma once
+#include "ConfigRealms.h"
+
+// Back‑compat macro aliases (DEPRECATED – remove in a later major)
+#ifndef SC_ROOM_CANVAS_ENABLED
+ #define SC_ROOM_CANVAS_ENABLED        SC_REALM_PAINT_ENABLED
+#endif
+#ifndef SC_ROOM_PAINT_ENABLED
+ #define SC_ROOM_PAINT_ENABLED         SC_REALM_PAINT_ENABLED
+#endif
+#ifndef SC_ROOM_MIXER_ENABLED
+ #define SC_ROOM_MIXER_ENABLED         SC_REALM_MIXER_ENABLED
+#endif
+#ifndef SC_ROOM_SEQUENCER_ENABLED
+ #define SC_ROOM_SEQUENCER_ENABLED     SC_REALM_SEQUENCER_ENABLED
+#endif
+#ifndef SC_ROOM_FORGE_ENABLED
+ #define SC_ROOM_FORGE_ENABLED         SC_REALM_MACRO_ENABLED
+#endif
+#ifndef SC_ROOM_TEST_BUTTON_ENABLED
+ #define SC_ROOM_TEST_BUTTON_ENABLED   1
+#endif

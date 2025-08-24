@@ -1,0 +1,42 @@
+# RT-Safety Audit Workflow
+name: rt-safety-audit
+id: rt-safety-audit
+description: Comprehensive real-time safety audit for SpectralCanvas Pro
+
+steps:
+  - step: 1
+    name: "Initial Scan"
+    agent: rt-audio-guardian
+    task: scan-rt-violations
+    description: "Scan all audio processing code for RT violations"
+    
+  - step: 2
+    name: "Deep Analysis"  
+    agent: rt-audio-guardian
+    task: audit-critical-paths
+    description: "Deep analysis of processBlock and synthesis chains"
+    depends_on: [1]
+    
+  - step: 3
+    name: "JUCE Integration Check"
+    agent: juce-integration-specialist
+    task: validate-apvts
+    description: "Validate APVTS parameter access patterns"
+    parallel_with: [2]
+    
+  - step: 4
+    name: "Generate Report"
+    agent: rt-audio-guardian
+    task: generate-rt-report
+    description: "Comprehensive RT-safety compliance report"
+    depends_on: [2, 3]
+
+triggers:
+  - processBlock changes
+  - SpectralSynthEngine modifications
+  - Audio processing path updates
+  
+outcomes:
+  - RT-safety compliance report
+  - Violation fixes with code samples
+  - Performance optimization recommendations

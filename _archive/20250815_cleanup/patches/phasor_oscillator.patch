@@ -1,0 +1,217 @@
+--- a/Source/Core/SpectralSynthEngine.h
++++ b/Source/Core/SpectralSynthEngine.h
+@@ -148,6 +148,14 @@ class SpectralSynthEngine
+     struct SpectralOscillator
+     {
++        // PHASOR OSCILLATOR: Complex unit phasor for drift-free synthesis
++        struct ComplexPhasor {
++            float real = 1.0f;
++            float imag = 0.0f;
++        };
++        ComplexPhasor phasor;           // Current phasor state
++        ComplexPhasor rotation;          // Per-sample rotation
++        int normalizationCounter = 0;   // Counter for periodic renormalization
++        
+         // LOCK-FREE DESIGN: Core parameters using atomic operations
+         std::atomic<bool> isActive{false};
+         std::atomic<float> frequency{440.0f};
+@@ -170,6 +178,7 @@ class SpectralSynthEngine
+         
+         void reset();
+         void updateFromPaint(const PaintData& paint);
++        void initializeRotation(float freq, float sampleRate);
+         float renderNextSample(double sampleRate);
+         
+         // LOCK-FREE: Thread-safe parameter updates from UI thread
+@@ -445,6 +454,9 @@ private:
+     static constexpr int PAINT_QUEUE_SIZE = 64;
+     std::array<LockFreePaintData, PAINT_QUEUE_SIZE> paintQueue;
+     
++    // RT-SAFE: Preallocated temporary data for paint queue processing
++    LockFreePaintData tempPaintData;  // Reusable buffer allocated in prepareToPlay
++    
+     // Lock-free indices using memory ordering
+     std::atomic<uint32_t> paintQueueHead{0};     // Producer index (UI thread)
+     std::atomic<uint32_t> paintQueueTail{0};     // Consumer index (audio thread)
+--- a/Source/Core/SpectralSynthEngine.cpp
++++ b/Source/Core/SpectralSynthEngine.cpp
+@@ -29,21 +29,6 @@
+ #include <intrin.h>     // CPUID for SIMD capability detection
+ 
+ //==============================================================================
+-// RT-SAFE: Fast sine approximation for real-time audio
+-//==============================================================================
+-inline float fastSin(float x) noexcept
+-{
+-    // Normalize to [-pi, pi]
+-    while (x > juce::MathConstants<float>::pi) x -= 2.0f * juce::MathConstants<float>::pi;
+-    while (x < -juce::MathConstants<float>::pi) x += 2.0f * juce::MathConstants<float>::pi;
+-    
+-    // Taylor series approximation (accurate to ~0.001)
+-    const float x2 = x * x;
+-    const float x3 = x2 * x;
+-    const float x5 = x3 * x2;
+-    return x - (x3 / 6.0f) + (x5 / 120.0f);
+-}
+-
+-//==============================================================================
+ // Constructor - Initialize Revolutionary Synthesis System
+ //==============================================================================
+ 
+@@ -378,6 +363,10 @@ void SpectralSynthEngine::prepareToPlay(double sampleRate, int samplesPerBlock,
+     currentSamplesPerBlock = samplesPerBlock;
+     currentNumChannels = numChannels;
+     
++    // RT-SAFE: Preallocate reusable buffers
++    // This avoids any allocations in the audio thread
++    tempPaintData = LockFreePaintData();  // Initialize once, reuse every block
++    
+     // Prepare all engines
+     if (sampleMaskingEngine)
+         sampleMaskingEngine->prepareToPlay(sampleRate, samplesPerBlock, numChannels);
+@@ -392,10 +381,11 @@ void SpectralSynthEngine::prepareToPlay(double sampleRate, int samplesPerBlock,
+     if (cdpSpectralEngine)
+         cdpSpectralEngine->prepareToPlay(sampleRate, samplesPerBlock);
+     
+-    // Initialize all oscillators
++    // Initialize all oscillators with phasor rotation
+     for (auto& osc : spectralOscillators)
+     {
+         osc.reset();
++        osc.initializeRotation(osc.frequency.load(), sampleRate);
+     }
+     
+     // Reset performance metrics
+@@ -429,8 +419,13 @@ void SpectralSynthEngine::processBlock(juce::AudioBuffer<float>& buffer)
+         for (int i = 0; i < buffer.getNumSamples(); ++i)
+         {
+             float currentPhase = testTonePhase.load();
+-            // RT-SAFE: Using fast sine approximation instead of std::sin
+-            float sine = fastSin(currentPhase * 2.0f * juce::MathConstants<float>::pi);
++            
++            // RT-SAFE: Using simple phasor for test tone
++            static float testPhasorReal = 1.0f;
++            static float testPhasorImag = 0.0f;
++            const float omega = 2.0f * juce::MathConstants<float>::pi * frequency / currentSampleRate;
++            const float rotReal = std::cos(omega), rotImag = std::sin(omega);
++            float sine = testPhasorImag;  // Use imaginary part as sine output
+             float sample = sine * amplitude;
+             
+             // Apply to all channels
+@@ -439,6 +434,11 @@ void SpectralSynthEngine::processBlock(juce::AudioBuffer<float>& buffer)
+                 buffer.setSample(channel, i, sample);
+             }
+             
++            // Update phasor
++            float newReal = testPhasorReal * rotReal - testPhasorImag * rotImag;
++            float newImag = testPhasorReal * rotImag + testPhasorImag * rotReal;
++            testPhasorReal = newReal; testPhasorImag = newImag;
++            
+             // THREAD SAFETY: Update phase with memory barriers and safety checks
+             currentPhase += frequency / currentSampleRate;
+             if (currentPhase >= 1.0f) currentPhase -= 1.0f;
+@@ -938,9 +938,26 @@ void SpectralSynthEngine::SpectralOscillator::reset()
+     paintPressuremod.store(0.0f, std::memory_order_relaxed);
+     paintVelocityMod.store(0.0f, std::memory_order_relaxed);
+     
++    // PHASOR: Reset complex oscillator state
++    phasor.real = 1.0f;
++    phasor.imag = 0.0f;
++    rotation.real = 1.0f;
++    rotation.imag = 0.0f;
++    normalizationCounter = 0;
++    
+     // Audio thread local state (no atomics needed)
+     phase = 0.0f;
+     temporalEvolution = 0.0f;
++    sourceColor = juce::Colours::white;
++}
++
++void SpectralSynthEngine::SpectralOscillator::initializeRotation(float freq, float sampleRate)
++{
++    // Ensure f_max <= sampleRate/3 for RT-safety
++    const float clampedFreq = juce::jmin(freq, static_cast<float>(sampleRate) / 3.0f);
++    const float omega = 2.0f * juce::MathConstants<float>::pi * clampedFreq / sampleRate;
++    rotation.real = std::cos(omega);
++    rotation.imag = std::sin(omega);
+ }
+ 
+ void SpectralSynthEngine::SpectralOscillator::updateFromPaint(const PaintData& paint)
+@@ -977,8 +994,23 @@ float SpectralSynthEngine::SpectralOscillator::renderNextSample(double sampleRa
+     const float currentSpectralBrightness = spectralBrightness.load(std::memory_order_relaxed);
+     const float currentSpectralWidth = spectralWidth.load(std::memory_order_relaxed);
+     
+-    // Calculate phase increment
+-    const float phaseIncrement = (currentFrequency * 2.0f * juce::MathConstants<float>::pi) / static_cast<float>(sampleRate);
++    // PHASOR: Complex multiplication for oscillation
++    float newReal = phasor.real * rotation.real - phasor.imag * rotation.imag;
++    float newImag = phasor.real * rotation.imag + phasor.imag * rotation.real;
++    phasor.real = newReal;
++    phasor.imag = newImag;
++    
++    // Renormalize every 256 samples to prevent drift
++    if (++normalizationCounter >= 256) {
++        float magnitude = std::sqrt(phasor.real * phasor.real + phasor.imag * phasor.imag);
++        if (magnitude > 0.0f && magnitude != 1.0f) {
++            const float invMag = 1.0f / magnitude;
++            phasor.real *= invMag;
++            phasor.imag *= invMag;
++        }
++        normalizationCounter = 0;
++    }
+     
+     // MetaSynth-style waveform selection based on harmonic content
+     float baseSample = 0.0f;
+@@ -986,8 +1018,8 @@ float SpectralSynthEngine::SpectralOscillator::renderNextSample(double sampleRa
+     
+     if (currentHarmonicContent < 0.2f)
+     {
+-        // Pure sine wave for low harmonic content
+-        baseSample = std::sin(phase);
++        // Pure sine wave for low harmonic content - use imaginary part of phasor
++        baseSample = phasor.imag;
+     }
+     else if (currentHarmonicContent < 0.4f)
+     {
+@@ -1062,7 +1094,10 @@ float SpectralSynthEngine::SpectralOscillator::renderNextSample(double sampleRa
+     // Apply spectral brightness envelope
+     baseSample *= (0.5f + currentSpectralBrightness * 0.5f);
+     
+-    // Update phase for next sample
++    // PHASOR: Phase is maintained in the complex phasor, no wrapping needed
++    // Legacy phase kept for backward compatibility with other waveforms
++    const float phaseIncrement = (currentFrequency * 2.0f * juce::MathConstants<float>::pi) / static_cast<float>(sampleRate);
+     phase += phaseIncrement;
+     
+     // Wrap phase to prevent numerical issues
+@@ -2586,9 +2621,8 @@ void SpectralSynthEngine::popPaintDataUltraFast(LockFreePaintData& data) noexce
+ 
+ void SpectralSynthEngine::processPaintQueueUltraFast() noexcept
+ {
+     // 🏁 AUDIO THREAD: Process all available paint data in single pass
+-    // RT-SAFE: Using stack allocation instead of thread_local
+-    LockFreePaintData tempData;  // Stack allocation - RT-safe
++    // RT-SAFE: Using preallocated member instead of stack allocation
++    // tempPaintData is allocated once in prepareToPlay
+     
+     int processedCount = 0;
+     const int maxProcessPerCall = 8;  // Limit to prevent audio glitches
+@@ -2596,15 +2630,16 @@ void SpectralSynthEngine::processPaintQueueUltraFast() noexcept
+     while (processedCount < maxProcessPerCall && popPaintDataUltraFast(tempPaintData)) {
+         // DIRECT OSCILLATOR ALLOCATION: Use pre-computed values
+-        const float frequency = tempData.frequency.load(std::memory_order_relaxed);
+-        const float amplitude = tempData.amplitude.load(std::memory_order_relaxed);
+-        const float panPosition = tempData.panPosition.load(std::memory_order_relaxed);
++        const float frequency = tempPaintData.frequency.load(std::memory_order_relaxed);
++        const float amplitude = tempPaintData.amplitude.load(std::memory_order_relaxed);
++        const float panPosition = tempPaintData.panPosition.load(std::memory_order_relaxed);
+         
+         // Find free oscillator using optimized pool
+         if (auto* freeOsc = findFreeOscillator()) {
+             // INSTANT SETUP: All values pre-computed, no math needed
+             freeOsc->setFrequency(frequency);
+             freeOsc->setAmplitude(amplitude);
++            freeOsc->initializeRotation(frequency, currentSampleRate);  // PHASOR: Initialize rotation
+             freeOsc->setPanPosition(panPosition);
+             freeOsc->setActive(true);  // Atomic release - oscillator is live!
+             

@@ -1,0 +1,211 @@
+# Denormal Detector Profile v1.0
+# Specialized RT-Audio Guardian variant for denormal number detection
+
+# Migration Metadata
+source_path: "docs/agents/profiles/rt-audio-guardian/denormal-detector.profile.yaml"
+migration_date: "2025-08-20"
+
+name: denormal-detector
+parent: rt-audio-guardian
+version: "1.0.0"
+specialization: "Denormal number and floating-point performance validation"
+
+description: >
+  Specialized variant for detecting denormal numbers and floating-point performance issues
+  in audio processing. Prevents CPU usage spikes caused by denormal values in filters,
+  oscillators, and feedback loops within SpectralCanvas Pro's DSP chain.
+
+# Enhanced Triggers
+additional_triggers:
+  diff_path_matches:
+    - "Source/Core/*Filter*"
+    - "Source/Core/*Oscillator*"
+    - "Source/Core/SpectralSynthEngine.*"
+    - "Source/Spectral/**"
+  diff_contains:
+    - "float"
+    - "double"
+    - "feedback"
+    - "delay"
+    - "filter"
+    - "oscillator"
+    - "resonance"
+
+# Denormal Detection Rules  
+specialized_rules:
+  denormal_sources:
+    feedback_loops:
+      description: "Feedback loops are prime denormal generators"
+      risk_patterns:
+        - "output.*=.*input.*\\+.*feedback"
+        - "delay.*buffer.*feedback"
+        - "filter.*state.*previous"
+      severity: high
+      mitigation: "Add denormal suppression or flush-to-zero"
+      
+    exponential_decay:
+      description: "Exponential decay can generate denormals"
+      risk_patterns:
+        - ".*\\*=.*0\\.9"  # Decay coefficients
+        - "envelope.*decay"
+        - "release.*coefficient" 
+      severity: medium
+      
+    filter_coefficients:
+      description: "IIR filter coefficients approaching zero"
+      risk_patterns:
+        - "cutoff.*very.*low"
+        - "resonance.*extreme"
+        - "coefficient.*calculation"
+      severity: high
+
+  denormal_protection:
+    flush_to_zero:
+      description: "CPU flush-to-zero mode should be enabled"
+      required_patterns:
+        - "_MM_SET_FLUSH_ZERO_MODE"
+        - "fesetenv.*FE_DFL_DISABLE_SSE_DENORMS"
+      platforms: ["x86", "x86_64"]
+      
+    manual_suppression:
+      description: "Manual denormal suppression techniques"
+      patterns:
+        - "std::fpclassify.*FP_SUBNORMAL"
+        - "fabsf.*< 1e-30.*= 0"
+        - "denormal.*noise.*addition"
+      effectiveness: "Good for specific cases"
+      
+    compiler_optimizations:
+      description: "Compiler flags for denormal handling"
+      flags:
+        - "-ffast-math"
+        - "-msse2 -mfpmath=sse"
+      cautions: "May affect precision"
+
+# Floating-Point Performance Issues
+performance_patterns:
+  expensive_operations:
+    transcendental_functions:
+      functions: ["sin", "cos", "tan", "exp", "log", "pow", "sqrt"]
+      context_severity:
+        - inner_loop: critical
+        - per_sample: high  
+        - per_block: medium
+      alternatives: "Lookup tables, polynomial approximations"
+      
+    division_operations:
+      description: "Division is expensive, especially in loops"
+      risk_patterns:
+        - ".*/ .*inside.*loop"
+        - "1.0 / frequency"  # Use reciprocal multiplication
+      alternatives: "Pre-compute reciprocals"
+      
+    branching_in_loops:
+      description: "Conditional branches in inner loops"
+      patterns:
+        - "if.*inside.*for.*samples"
+        - "switch.*per.*sample"
+      impact: "Pipeline stalls and mispredictions"
+
+# Audio-Specific Denormal Contexts
+audio_contexts:
+  spectral_processing:
+    fft_bins:
+      description: "FFT bins can contain very small values"
+      risk_areas:
+        - "Magnitude calculation after IFFT"
+        - "Phase interpolation near zero"
+        - "Windowing function tails"
+        
+  analog_modeling:
+    filter_states:
+      description: "Analog filter modeling with feedback"
+      risk_components:
+        - "CEM3389Filter internal states"
+        - "Tube saturation with very small signals"
+        - "EMU filter resonance extremes"
+        
+  oscillators:
+    phase_accumulation:
+      description: "Phase accumulators with very low frequencies"
+      risk_patterns:
+        - "frequency < 0.1 Hz"
+        - "phase_increment calculation"
+        - "Modulation depth near zero"
+
+# Platform-Specific Handling
+platform_denormals:
+  x86_sse:
+    flush_to_zero: "_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON)"
+    denormals_are_zero: "_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON)"
+    combined: "Enable both for maximum performance"
+    
+  arm_neon:
+    flush_to_zero: "Set FPCR.FZ bit"
+    detection: "Different from x86, check ARM documentation"
+    
+  cross_platform:
+    detection_code: |
+      #ifdef __SSE2__
+          _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+          _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+      #endif
+
+# Enhanced KPIs  
+additional_kpis:
+  denormal_risk_score: "< 0.3"           # Risk assessment score
+  protection_coverage: "> 0.8"           # Percentage of risky code protected
+  performance_hotspot_detection: "> 0.9" # Accuracy of performance predictions
+  cpu_spike_prevention: "> 0.95"         # Effectiveness in preventing spikes
+
+# Test Fixtures
+test_fixtures:
+  - name: "unprotected_feedback"
+    code: |
+      void processFilter() {
+          for (int i = 0; i < samples; ++i) {
+              output[i] = input[i] + feedback * 0.99f;  // RISK: denormals
+              feedback = output[i];
+          }
+      }
+    expected_violations: ["Feedback loop without denormal protection"]
+    
+  - name: "expensive_per_sample"
+    code: |
+      void processOscillator() {
+          for (int i = 0; i < samples; ++i) {
+              output[i] = sin(phase);  // VIOLATION: expensive per-sample
+              phase += frequency / sampleRate;
+          }
+      }
+    expected_violations: ["Transcendental function in inner loop"]
+    
+  - name: "proper_protection"
+    code: |
+      void processFilter() {
+          // Enable flush-to-zero
+          _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+          
+          for (int i = 0; i < samples; ++i) {
+              output[i] = input[i] + feedback * 0.99f;
+              feedback = output[i];
+              // Denormals automatically flushed to zero
+          }
+      }
+    expected_violations: []
+
+# Output Extensions
+output_extensions:
+  denormal_analysis:
+    risk_hotspots:
+      - location: string
+        risk_level: enum[critical, high, medium, low]
+        denormal_source: string
+        suggested_mitigation: string
+    performance_impact:
+      estimated_cpu_overhead: number
+      affected_functions: array[string]
+    protection_status:
+      flush_to_zero_enabled: boolean
+      manual_suppression_count: integer
+      coverage_percentage: number

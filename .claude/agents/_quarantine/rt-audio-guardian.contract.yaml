@@ -1,0 +1,197 @@
+# RT-Audio Guardian Contract v1.0
+# Real-time audio safety enforcer for SpectralCanvas Pro
+
+# Migration Metadata
+source_path: "docs/agents/rt-audio-guardian.contract.yaml"
+migration_date: "2025-08-20"
+
+name: rt-audio-guardian
+version: "1.0.0"
+model: analysis-only
+color: red
+priority: critical
+
+description: >
+  Scans code changes for real-time audio thread violations. Enforces lock-free,
+  allocation-free, and logging-free operation in the audio processing chain.
+  Focus on SpectralCanvas Pro's paint-to-audio pipeline safety.
+
+# Best-of-N Design Options
+design_options:
+  champion: hybrid_scanner
+  alternatives:
+    - conservative_patterns
+    - aggressive_ast
+    
+  conservative_patterns:
+    approach: "Pattern matching for known RT violations"
+    speed: fast
+    precision: medium
+    recall: medium
+    tradeoffs: "Fast but may miss subtle violations"
+    
+  aggressive_ast: 
+    approach: "Full AST-like analysis with context awareness"
+    speed: slow
+    precision: high
+    recall: high
+    tradeoffs: "Thorough but slow, may have false positives"
+    
+  hybrid_scanner:
+    approach: "Fast pattern scan + targeted deep analysis"
+    speed: medium
+    precision: high
+    recall: high
+    tradeoffs: "Balanced performance and accuracy"
+
+# Violation Detection Rules
+rules:
+  blocking_operations:
+    denylist:
+      - "std::mutex"
+      - "std::lock_guard"
+      - "std::unique_lock"
+      - "std::shared_lock"
+      - "pthread_mutex"
+      - "CriticalSection"
+    severity: critical
+    
+  memory_operations:
+    denylist:
+      - "new\\s*\\("
+      - "delete\\s+"
+      - "malloc\\s*\\("
+      - "free\\s*\\("
+      - "std::make_unique"
+      - "std::make_shared"
+    severity: critical
+    
+  logging_operations:
+    denylist:
+      - "printf\\s*\\("
+      - "std::cout"
+      - "std::cerr"
+      - "DBG\\s*\\("
+      - "jassert"
+      - "Logger::"
+    severity: high
+    
+  string_operations:
+    denylist:
+      - "std::string\\s*\\("
+      - "String\\s*\\("  # JUCE String
+      - "\\.append\\s*\\("
+      - "\\.push_back\\s*\\("
+    severity: medium
+    context_required: true
+
+# Trigger Conditions
+triggers:
+  diff_path_matches:
+    - "Source/Core/**"
+    - "Source/Spectral/**" 
+    - "Source/rt/**"
+    - "Source/Core/PluginProcessor.cpp"
+    - "Source/Core/SpectralSynthEngine.cpp"
+    - "Source/Core/AtomicOscillator.cpp"
+  diff_contains:
+    - "processBlock("
+    - "prepareToPlay("
+    - "SpscRing::"
+    - "PaintGesture"
+    - "SpectralSynthEngine::"
+
+# Analysis Scope
+scope:
+  audio_thread_functions:
+    - "processBlock"
+    - "SpectralSynthEngine::synthesize"
+    - "AtomicOscillator::process"
+    - "EMUFilter::process"
+    - "SpscRing::pop"
+    - "SpscRing::push"
+  ui_thread_functions:
+    - "SpscRing::forcePush"
+    - "CanvasComponent::paint"
+    - "timerCallback"
+    
+  safe_patterns:
+    - "std::atomic"
+    - "memory_order_relaxed" 
+    - "memory_order_acquire"
+    - "memory_order_release"
+    - "alignas"
+    - "const"
+
+# Output Specification
+output:
+  format: json
+  schema: 
+    violations:
+      - file: string
+        line: integer
+        rule: string
+        excerpt: string
+        severity: enum[critical, high, medium, low]
+        context: string
+        suggestion: string
+    summary:
+      total_violations: integer
+      critical_count: integer
+      files_scanned: integer
+      scan_duration_ms: integer
+    recommendations:
+      - action: string
+        priority: enum[immediate, high, medium, low]
+
+# Test Hooks
+posthooks:
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"RT|Paint\")"
+  - "Task(ctest --test-dir build -C RelWithDebInfo -R \"TestRTSafety\")"
+
+# Performance Metrics  
+kpis:
+  precision: "> 0.85"  # True positives / (True positives + False positives)
+  recall: "> 0.90"     # True positives / (True positives + False negatives)
+  scan_seconds: "< 30"  # Time to analyze typical diff
+  fp_rate: "< 0.15"    # False positive rate
+
+# Validation Test Cases
+test_fixtures:
+  - name: "locks_in_processBlock"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          std::lock_guard<std::mutex> lock(mutex_);  // VIOLATION
+          // process audio
+      }
+    expected_violations: 1
+    
+  - name: "alloc_in_process" 
+    code: |
+      void SpectralSynthEngine::synthesize() {
+          auto temp = std::make_unique<float[]>(1024);  // VIOLATION
+          // synthesis code
+      }
+    expected_violations: 1
+    
+  - name: "safe_atomic_usage"
+    code: |
+      void processBlock(AudioBuffer& buffer) {
+          auto freq = frequency_.load(std::memory_order_relaxed);  // SAFE
+          // process audio
+      }
+    expected_violations: 0
+
+# Context Knowledge
+project_context:
+  paint_to_audio_pipeline: |
+    UI Thread → SpscRing → Audio Thread
+    CanvasComponent → PaintQueue → SpectralSynthEngine
+  critical_paths:
+    - "processBlock() chain in PluginProcessor"
+    - "SpectralSynthEngine::synthesize() execution"
+    - "PaintGesture consumption from SpscRing"
+  architecture_notes:
+    - "Lock-free SPSC queue for UI→Audio communication"
+    - "Atomic parameter snapshots using APVTS"
+    - "Pre-allocated oscillator pools for zero-allocation synthesis"

@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "name": "SpectralCanvas Pro UI Policy",
+    "version": "1.0",
+    "author": "Audio Plugin Designer"
+  },
+
+  "gestures": {
+    "primaryPointer": "single-stylus-pressure",
+    "fallbackPressure": 1.0,
+    "gestureBindings": {
+      "left": "paint",
+      "right": "erase",
+      "doubleClick": "dot",
+      "shift+drag": "constrain_45deg|snapToScale",
+      "ctrl+drag": "pick_style",
+      "alt+click": "smudge",
+      "longPressMs": 400
+    }
+  },
+
+  "paintStroke": {
+    "persistence": "persistent", 
+    "modes": ["persistent", "transient", "freeze"],
+    "visualPersistDefault": true,
+    "strokeLayering": true
+  },
+
+  "knobs": {
+    "shiftFineMultiplier": 0.05,
+    "doubleClickReset": "defaultValue",
+    "altDoubleClickReset": "nearestDetent",
+    "detents": {
+      "blue": {
+        "brushSize": [0.05,0.2,0.5,0.85],
+        "pressure": [0.0,0.25,0.5,0.75,1.0],
+        "decay": [0.1,0.35,0.6,0.9],
+        "snap": [0.0,0.33,0.66,1.0],
+        "harmDepth": [0.0,0.5,1.0],
+        "panColorDepth": [0.0,0.5,1.0]
+      },
+      "purple": {
+        "cutoff": [0.05,0.25,0.5,0.75,0.95],
+        "resonance": [0.1,0.4,0.7,1.0],
+        "drive": [0.0,0.3,0.6,1.0],
+        "lpBpMix": [0.0,0.5,1.0],
+        "keyTrack": [0.0,0.5,1.0],
+        "env": [0.0,0.25,0.5,1.0]
+      },
+      "yellow": {
+        "drive": [0.0,0.25,0.5,0.75,1.0],
+        "bias": [-1.0,-0.5,0.0,0.5,1.0],
+        "color": [-1.0,-0.25,0.25,1.0],
+        "mix": [0.0,0.5,1.0],
+        "oversample": [1.0,2.0,4.0],
+        "compensation": [0.0,0.5,1.0]
+      }
+    }
+  },
+
+  "ledBar": {
+    "primary": "paintIntensityWhilePainting",
+    "fallback": "outputLevel",
+    "decayMs": 200
+  },
+
+  "visual": {
+    "hud": {
+      "showOnHoverMs": 200,
+      "largeOnChangeMs": 1200,
+      "font": "MetaSynth-style",
+      "shadow": true
+    },
+    "realmButton": {
+      "hoverAnimMs": 80,
+      "activeGlowMs": 120
+    },
+    "crt": {
+      "targetFps": 60,
+      "fallbackFps": 30,
+      "useHybridCaching": true
+    }
+  },
+
+  "accessibility": {
+    "keyboardNavigation": true,
+    "screenReaderNames": true,
+    "highContrastTokenSet": true,
+    "largeFontScale": 1.25
+  },
+
+  "performance": {
+    "targetUiCpuPercentSingleCore": 5,
+    "idleTargetPercent": 2,
+    "maxPaintQueueDepth": 1024
+  },
+
+  "defaults": {
+    "canvasResolution": [128,128],
+    "knobDefaultValues": {
+      "blue_brushSize": 0.2,
+      "blue_pressure": 0.5,
+      "purple_cutoff": 12000.0,
+      "yellow_drive": 2.0
+    }
+  }
+}

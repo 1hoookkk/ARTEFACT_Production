@@ -1,0 +1,11 @@
+﻿{
+  "version": 1,
+  "autoUpdate": true,
+  "agentsDir": ".claude/agents",
+  "hooks": {
+    "postToolUse": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\hook-wrapper.ps1 -Payload scripts\\hello-visibility.ps1"
+  },
+  "ui": {
+    "telemetry": true
+  }
+}

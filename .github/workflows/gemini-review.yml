@@ -1,0 +1,33 @@
+name: gemini-pr-review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+concurrency:
+  group: gemini-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft }}
+    permissions:
+      pull-requests: write
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Optional: build + lightweight validation so Gemini sees logs
+      - name: Build (fast check)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build --parallel || true
+
+      - name: Run Gemini Review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # Pseudocode: replace with your actual reviewer script or marketplace action
+          python .github/scripts/gemini_review.py \
+            --pr ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --focus "CLAUDE.md compliance, RT-safety, procedural UI, CrashToggles, snapshot harness" \
+            --post-as "Gemini Reviewer"

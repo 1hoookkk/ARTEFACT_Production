@@ -1,0 +1,1 @@
+Second test - should trigger updated PostToolUse hook that writes to log file

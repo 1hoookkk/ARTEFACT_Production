@@ -1,0 +1,11 @@
+{
+  "session_id": "36c9da1b-bc85-422c-8e26-2021813b80bb",
+  "transcript_path": "C:\\Users\\hooki\\.claude\\projects\\C--ARTEFACT-Production\\36c9da1b-bc85-422c-8e26-2021813b80bb.jsonl",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "C:\\ARTEFACT_Production\\Source\\Tests\\RunAllTests.cpp",
+    "old_string": "#define TDD_GUARD_IMPLEMENTATION\n#include \"tdd-guard.h\"\n\n#include \"TestMappingLogic.h\"",
+    "new_string": "#define TDD_GUARD_IMPLEMENTATION\n#include \"../../External/tdd-guard/include/tdd-guard.h\"\n\n// Include test suites\n// NOTE: TestMappingLogic.h removed - was causing build errors\n// Individual test files now include their own test suites"
+  }
+}

@@ -1,0 +1,163 @@
+--- Source/Core/SpectralSynthEngine.h.orig	2025-08-11 10:00:00.000000000 +0000
++++ Source/Core/SpectralSynthEngine.h	2025-08-11 11:00:00.000000000 +0000
+@@ -403,6 +403,8 @@
+     std::array<float, PRESSURE_LUT_SIZE> pressureLookupTable;  // std::pow(pressure, 0.7f)
+     std::array<float, 256> gammaLookupTable;                   // brightness^gamma mapping
+     
++    // CONSTANT-POWER PANNING: sqrt LUT for hue->pan conversion
++    std::array<float, 256> sqrtLookupTable;                    // sqrt(x) for constant-power pan
+     // Lookup table initialization
+     void initializeLookupTables();
+     void initializeFrequencyLUT();
+@@ -410,6 +412,7 @@
+     void initializePow2LUT();
+     void initializePressureLUT();
+     
++    void initializeSqrtLUT();
+     //==============================================================================
+     // 🚀 SIMD OPTIMIZATION: Vectorized oscillator processing (35% performance boost)
+     
+@@ -573,6 +576,11 @@
+     // PERFORMANCE OPTIMIZATION: High-performance oscillator pool for 1024 concurrent oscillators
+     std::unique_ptr<OptimizedOscillatorPool<MAX_SPECTRAL_OSCILLATORS>> optimizedOscillatorPool;
+     
++    // TOP-N BAND SELECTION: RT-safe brightest band filtering
++    std::atomic<int> topNBands{128};                           // Default 128 bands
++    std::array<int, MAX_SPECTRAL_OSCILLATORS> bandIndices;    // Preallocated index array
++    std::array<float, MAX_SPECTRAL_OSCILLATORS> bandBrightness; // Brightness values for sorting
++
+     //==============================================================================
+     // Canvas Configuration
+     
+@@ -713,6 +721,11 @@
+     MorphFilter morphFilter;
+     TubeStage tubeStage;
+     std::atomic<bool> filterPrePost{false};  // false = post-tube, true = pre-tube
++    
++    // TOP-N parameter getter/setter
++    void setTopNBands(int n) noexcept { topNBands.store(juce::jlimit(1, MAX_SPECTRAL_OSCILLATORS, n), std::memory_order_relaxed); }
++    int getTopNBands() const noexcept { return topNBands.load(std::memory_order_relaxed); }
++    
+     
+     //==============================================================================
+     // Thread Safety - LOCK-FREE ARCHITECTURE
+--- Source/Core/SpectralSynthEngine.cpp.orig	2025-08-11 10:00:00.000000000 +0000
++++ Source/Core/SpectralSynthEngine.cpp	2025-08-11 11:00:00.000000000 +0000
+@@ -112,6 +112,9 @@
+         
+         // 🚀 CRITICAL OPTIMIZATION: Initialize lookup tables for 60% CPU reduction
+         initializeLookupTables();
++        
++        // Initialize band indices array
++        std::iota(bandIndices.begin(), bandIndices.end(), 0);
+         DBG("✅ Performance lookup tables initialized");
+     }
+     catch (const std::exception& e)
+@@ -1206,6 +1209,16 @@
+     }
+ }
+ 
++void SpectralSynthEngine::initializeSqrtLUT()
++{
++    // Initialize sqrt lookup table for constant-power panning
++    for (int i = 0; i < 256; ++i)
++    {
++        const float x = static_cast<float>(i) / 255.0f;
++        sqrtLookupTable[i] = std::sqrt(x);
++    }
++}
++
+ void SpectralSynthEngine::initializeLookupTables()
+ {
+     initializeFrequencyLUT();
+@@ -1213,6 +1226,7 @@
+     initializePow2LUT();
+     initializePressureLUT();
+     
++    initializeSqrtLUT();
+     // Initialize gamma lookup table for brightness mapping
+     for (int i = 0; i < 256; ++i)
+     {
+@@ -1400,8 +1414,46 @@
+             // REAL-TIME SAFE: Atomic state check without memory barriers for speed
+             if (oscillator.getIsActive())
+             {
+-                const float oscSample = oscillator.renderNextSamplePhasor(currentSampleRate);
++                // Store brightness for Top-N selection
++                const float brightness = oscillator.spectralBrightness.load(std::memory_order_relaxed);
++                bandBrightness[&oscillator - spectralOscillators.data()] = brightness;
++            }
++            else
++            {
++                bandBrightness[&oscillator - spectralOscillators.data()] = -1.0f; // Mark inactive
++            }
++        }
++        
++        // TOP-N SELECTION: Find brightest bands using nth_element (RT-safe)
++        const int currentTopN = topNBands.load(std::memory_order_relaxed);
++        const int validBands = juce::jmin(currentTopN, MAX_SPECTRAL_OSCILLATORS);
++        
++        // Use nth_element to partition: brightest N bands first
++        std::nth_element(bandIndices.begin(), 
++                        bandIndices.begin() + validBands,
++                        bandIndices.end(),
++                        [this](int a, int b) {
++                            return bandBrightness[a] > bandBrightness[b];
++                        });
++        
++        // PROCESS ONLY TOP-N BANDS
++        for (int i = 0; i < validBands; ++i)
++        {
++            const int oscIndex = bandIndices[i];
++            auto& oscillator = spectralOscillators[oscIndex];
++            
++            // Skip if brightness too low (inactive bands filtered out)
++            if (bandBrightness[oscIndex] <= 0.0f) continue;
+                 
++            if (oscillator.getIsActive())
++            {
++                const float oscSample = oscillator.renderNextSamplePhasor(currentSampleRate);
++                
++                // CONSTANT-POWER HUE PANNING: Use sqrt LUT
++                const float hue = static_cast<float>(oscillator.sourceColor.getHue()) / 360.0f;
++                const int sqrtIndex = static_cast<int>(hue * 255.0f) & 0xFF;
++                const float panLeft = sqrtLookupTable[255 - sqrtIndex];  // L = sqrt(1 - h)
++                const float panRight = sqrtLookupTable[sqrtIndex];       // R = sqrt(h)
+                 // FAST PANNING CALCULATION: Inline pan calculation
+                 const float panPosition = oscillator.getPanPosition();
+                 const float panLeft = (1.0f - panPosition) * 0.5f;
+@@ -1409,9 +1461,9 @@
+                 
+                 // ACCUMULATE WITH SOFT CLIPPING: Prevent harsh overloads
+                 const float scaledSample = oscSample * 0.1f; // Scale down for multiple oscillators
+-                leftSample += scaledSample * panLeft;
+-                rightSample += scaledSample * panRight;
+-            }
++                leftSample += scaledSample * panLeft;
++                rightSample += scaledSample * panRight;
++            }
+         }
+         
+         // SOFT CLIPPING: Prevent digital distortion while maintaining dynamics
+--- Source/Core/PluginProcessor.cpp.orig	2025-08-11 10:00:00.000000000 +0000
++++ Source/Core/PluginProcessor.cpp	2025-08-11 11:00:00.000000000 +0000
+@@ -89,6 +89,9 @@
+         parameters.createAndAddParameter(std::make_unique<juce::AudioParameterBool>(
+             "tubeAutoGain", "Tube Auto Gain", true));
+     
++        // Top-N Band Selection
++        parameters.createAndAddParameter(std::make_unique<juce::AudioParameterInt>(
++            "topNBands", "Top-N Bands", 1, 1024, 128));
+     }
+     catch (const std::exception& e)
+     {
+@@ -200,6 +203,10 @@
+             spectralSynthEngine->setTubeStageAutoGain(newValue);
+         }
+         
++        if (auto* topNParam = parameters.getRawParameterValue("topNBands"))
++        {
++            spectralSynthEngine->setTopNBands(static_cast<int>(*topNParam));
++        }
+     }
+ }

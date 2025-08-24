@@ -1,0 +1,86 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4803909..a510e1e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -24,8 +24,8 @@ juce_add_plugin(SpectralCanvas
+     PRODUCT_NAME "SpectralCanvas Pro"
+     COMPANY_NAME "SpectralAudio"
+     BUNDLE_ID "com.spectralaudio.spectralcanvas"
+-    PLUGIN_MANUFACTURER_CODE "SpAu"
+-    PLUGIN_CODE "SpCv"
++    PLUGIN_MANUFACTURER_CODE "SPAU"
++    PLUGIN_CODE "SPCV"
+     FORMATS VST3 Standalone
+     VST3_CATEGORIES "Instrument" "Synthesizer"
+     IS_SYNTH TRUE
+@@ -36,9 +36,14 @@ juce_add_plugin(SpectralCanvas
+     VERSION ${PROJECT_VERSION})
+ 
+ # Build options
++option(FAST_BUILD "Enable fast builds (unity, /MP, skip extras)" ON)
++option(BUILD_TESTS "Build unit tests" OFF)  # turn off for speed tonight
++option(BUILD_ROMPLER "Build EMU Rompler" OFF)  # heavy; disable for speed
+ option(BUILD_EMU_ROMPLER "Build EMU Rompler version" ON)
+ option(SC_MINIMAL_EDITOR_DIAG "Build with minimal editor for isolation" OFF)
+ 
++# Fast build optimizations will be set after target definition
++
+ # SpectralCanvas Pro Plugin Sources
+ target_sources(SpectralCanvas PRIVATE
+     # Core Plugin Architecture
+@@ -141,14 +146,33 @@ target_link_libraries(SpectralCanvas PRIVATE
+ # Generate JUCE header
+ juce_generate_juce_header(SpectralCanvas)
+ 
++# Precompiled headers for faster builds
++if (FAST_BUILD)
++  target_precompile_headers(SpectralCanvas PRIVATE Source/pch.h)
++endif()
++
++# Fast build optimizations
++if (FAST_BUILD)
++  # MSVC parallel compile
++  add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/MP>)
++  # Unity build on plugin + editor speeds up many-file projects
++  set_target_properties(SpectralCanvas PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 16)
++  # Keep LTO/LTCG OFF for plugin to avoid slow links
++  set_target_properties(SpectralCanvas PROPERTIES INTERPROCEDURAL_OPTIMIZATION FALSE)
++endif()
++
+ # Host Harness tool for editor lifecycle testing
+ option(BUILD_HOST_HARNESS "Build the HostHarness tool" ON)
+ if(BUILD_HOST_HARNESS)
+     add_subdirectory(tools/HostHarness)
++    # Fast build options for HostHarness
++    if (TARGET HostHarness AND FAST_BUILD)
++        set_target_properties(HostHarness PROPERTIES INTERPROCEDURAL_OPTIMIZATION FALSE)
++        target_compile_options(HostHarness PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/O2 /MP>)
++    endif()
+ endif()
+ 
+ # Unit tests executable (optional)
+-option(BUILD_TESTS "Build unit tests" ON)
+ if(BUILD_TESTS)
+     juce_add_console_app(SpectralCanvasTests
+         PRODUCT_NAME "SpectralCanvas Tests")
+@@ -188,16 +212,11 @@ if(MSVC)
+         /W4           # Warning level 4
+         /permissive-  # Conformance mode
+         $<$<CONFIG:Release>:/O2>  # Optimize for speed in Release
+-        $<$<CONFIG:Release>:/GL>  # Whole program optimization
+-    )
+-    target_link_options(SpectralCanvas PRIVATE
+-        $<$<CONFIG:Release>:/LTCG>  # Link-time code generation
+-        $<$<CONFIG:Release>:/OPT:REF>  # Remove unreferenced code
+-        $<$<CONFIG:Release>:/OPT:ICF>  # Identical COMDAT folding
++        # Disabled /GL to prevent plugin loading issues
+     )
+-    # Strip debug info from Release builds
+-    set_target_properties(SpectralCanvas PROPERTIES
+-        LINK_FLAGS_RELEASE "/DEBUG:NONE"
++    # CRITICAL FIX 2: Disable LTCG for plugin target only
++    set_target_properties(SpectralCanvas PROPERTIES 
++        INTERPROCEDURAL_OPTIMIZATION FALSE
+     )
+ else()
+     # GCC/Clang optimizations

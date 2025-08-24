@@ -1,0 +1,45 @@
+--- Source/Core/SpectralSynthEngine.cpp.orig
++++ Source/Core/SpectralSynthEngine.cpp
+@@ -1496,7 +1496,10 @@ void SpectralSynthEngine::processSpectralOscillators(const BlockParams& blockPa
+     
+     // TOP-N SELECTION: Find brightest bands with comprehensive bounds hardening
+     const int currentTopN = juce::jlimit(1, MAX_SPECTRAL_OSCILLATORS, blockParams.topN);
+-    const int validBands = juce::jmin(currentTopN, MAX_SPECTRAL_OSCILLATORS);
++    const int bands = blockParams.activeBands;
++    const int N = juce::jlimit(1, bands, blockParams.topN);
++    const int maxCount = std::min(N, (int) bandIndices.size());
++    const int validBands = juce::jmin(currentTopN, MAX_SPECTRAL_OSCILLATORS);
+     
+     // BOUNDS HARDENING: Validate array sizes before nth_element
+     jassert(validBands > 0 && validBands <= MAX_SPECTRAL_OSCILLATORS);
+@@ -1538,13 +1541,8 @@ void SpectralSynthEngine::processSpectralOscillators(const BlockParams& blockPa
+         float rightSample = 0.0f;
+         
+         // PROCESS ONLY TOP-N BRIGHTEST BANDS with enhanced bounds hardening
+-        const int safeBandCount = juce::jmin(validBands, static_cast<int>(bandIndices.size()));
+-        for (int n = 0; n < safeBandCount; ++n)
++        for (int n = 0; n < maxCount; ++n)
+         {
+-            // BOUNDS HARDENING: Multiple levels of validation
+-            if (n >= static_cast<int>(bandIndices.size())) break;
+-            
+-            // D) Before using any band index:
+             const int idx = bandIndices[n];
+-            if ((unsigned) idx >= (unsigned) blockParams.activeBands) continue;
++            if ((unsigned) idx >= (unsigned) bands) continue;
+             
+             #ifndef NDEBUG
+@@ -1569,8 +1567,12 @@ void SpectralSynthEngine::processSpectralOscillators(const BlockParams& blockPa
+                 #endif
+                 
+                 // C) Simplified mask sampling with MASK_WIDTH/MASK_HEIGHT constants
++                const int ySize = (int) precomputedMaskY.size();
++                const float yNorm = (idx < ySize) ? precomputedMaskY[idx] : 0.0f;
++                
+                 const float timeNorm = static_cast<float>(sample) / static_cast<float>(juce::jmax(1, numSamples));
+                 const float x = juce::jlimit(0.f, float(MaskSnapshot::MASK_WIDTH  - 1), timeNorm * (MaskSnapshot::MASK_WIDTH  - 1));
+-                const float y = juce::jlimit(0.f, float(MaskSnapshot::MASK_HEIGHT - 1), precomputedMaskY[idx] * (MaskSnapshot::MASK_HEIGHT - 1));
++                const float y = juce::jlimit(0.f, float(MaskSnapshot::MASK_HEIGHT - 1), yNorm * (MaskSnapshot::MASK_HEIGHT - 1));
+                 float maskValue = (snap != nullptr) ? snap->sampleBilinear(x, y) : 1.0f;
+                 // Unity fallback: maskValue stays 1.0f
+                     

@@ -1,0 +1,8 @@
+TEST VERIFICATION MATRIX
+========================
+Test Name                | Status    | Time    | Notes
+-------------------------|-----------|---------|------------------
+SpectralSmoke           | PASS      | 0.02s   | All checks passed
+SpectralCanvas_Tests    | NOT_RUN   | 0.00s   | Executable missing
+
+SUMMARY: 1/2 tests passed (50%)

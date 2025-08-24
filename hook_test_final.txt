@@ -1,0 +1,1 @@
+Final test - should write to C:\temp\spectral_debug.log

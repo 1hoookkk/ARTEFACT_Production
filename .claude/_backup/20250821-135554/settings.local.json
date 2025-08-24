@@ -1,0 +1,34 @@
+﻿{
+  "permissions": {
+    "allow": [
+      "Bash(\"/c/Program Files/PowerShell/7/pwsh.exe\" -NoProfile -Command \"try { Get-Content ''.claude/settings.local.json'' -Raw | ConvertFrom-Json | Out-Null; Write-Output ''âœ… settings.local.json: Valid JSON'' } catch { Write-Output ''âŒ settings.local.json: Invalid JSON - '' + $_Exception.Message }\")",
+      "Bash(\"/c/Program Files/PowerShell/7/pwsh.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/smart-lint.ps1\")",
+      "Bash(\"/c/Program Files/PowerShell/7/pwsh.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/smart-test.ps1\")",
+      "Bash(\"/c/Program Files/PowerShell/7/pwsh.exe\" -NoProfile -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/ntfy-notifier.ps1\")",
+      "Bash(cat:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -ExecutionPolicy Bypass -File \"%USERPROFILE%\\.claude\\hooks\\smart-lint.ps1\""
+          },
+          {
+            "type": "command",
+            "command": "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -ExecutionPolicy Bypass -File \"%USERPROFILE%\\.claude\\hooks\\smart-test.ps1\""
+          }
+        ]
+      }
+    ]
+  },
+  "version": 1,
+  "autoUpdate": true,
+  "agentsDir": ".claude/agents",
+  "ui": {
+    "telemetry": true
+  }
+}

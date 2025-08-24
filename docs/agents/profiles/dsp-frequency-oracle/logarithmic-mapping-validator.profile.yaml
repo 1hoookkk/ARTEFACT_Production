@@ -1,0 +1,156 @@
+# Logarithmic Mapping Validator Profile v1.0
+# Specialized DSP Frequency Oracle variant for Y→frequency mapping validation
+
+name: logarithmic-mapping-validator
+parent: dsp-frequency-oracle
+version: "1.0.0"
+specialization: "Canvas Y-coordinate to frequency mapping accuracy"
+
+description: >
+  Specialized variant focused on validating logarithmic Y→frequency mapping accuracy.
+  Ensures perceptually-correct frequency scaling matching MetaSynth paradigm with
+  precise octave relationships and musical interval accuracy.
+
+# Enhanced Triggers
+additional_triggers:
+  diff_path_matches:
+    - "Source/Core/ColorToSpectralMapper.*"
+    - "Source/CanvasComponent.*"
+    - "docs/**/mapping*.md"
+  diff_contains:
+    - "mapYToFrequency"
+    - "log2"
+    - "pow"
+    - "frequency.*mapping"
+    - "canvas.*coordinate"
+    - "y.*axis"
+
+# Specialized Mathematical Validations
+specialized_validations:
+  logarithmic_formula:
+    expected_formula: "f = f_min * pow(f_max/f_min, normalized_y)"
+    alternative_formula: "f = exp2(log2(f_min) + normalized_y * (log2(f_max) - log2(f_min)))"
+    numerical_stability: "Check for precision loss with extreme values"
+    
+  perceptual_accuracy:
+    equal_visual_spacing:
+      description: "Equal Y-axis spacing should produce equal musical intervals"
+      test_method: "Measure frequency ratios for equal pixel distances"
+      expected_ratio: "Constant ratio for equal spacing"
+      
+    octave_relationships:
+      description: "Full canvas height should span exact octave count"
+      calculation: "log2(f_max/f_min) = octave_span"
+      example: "log2(20000/20) ≈ 10 octaves"
+      
+    semitone_precision:
+      description: "Pixel resolution should allow semitone accuracy"
+      minimum_resolution: "Canvas height / (octave_count * 12) pixels per semitone"
+      tolerance: "±25 cents (quarter-tone accuracy)"
+
+# Canvas Coordinate Analysis
+coordinate_analysis:
+  normalization_check:
+    input_range: "Raw pixel coordinates (0 to canvas_height-1)"
+    normalized_range: "[0.0, 1.0] for mathematical processing"
+    edge_handling: "Ensure exact 0.0 and 1.0 at boundaries"
+    
+  boundary_conditions:
+    y_equals_0:
+      expected_freq: "f_max (20000 Hz)"  # Top of canvas
+      tolerance: "±10 Hz"
+      note: "Top of canvas = highest frequency"
+      
+    y_equals_height:
+      expected_freq: "f_min (20 Hz)"     # Bottom of canvas  
+      tolerance: "±0.1 Hz"
+      note: "Bottom of canvas = lowest frequency"
+      
+    y_equals_half_height:
+      expected_freq: "sqrt(f_min * f_max) ≈ 632 Hz"  # Geometric mean
+      tolerance: "±5 Hz"
+      note: "Middle of canvas = geometric center frequency"
+
+# Musical Interval Validation
+musical_intervals:
+  octave_test:
+    description: "Frequency doubling should correspond to specific Y distance"
+    calculation: "y_distance = canvas_height / log2(f_max/f_min)"
+    verification: "f(y) * 2 = f(y + octave_distance)"
+    
+  perfect_fifth_test:
+    ratio: 1.5  # 3:2 ratio
+    y_distance: "canvas_height * log2(1.5) / log2(f_max/f_min)"
+    tolerance: "±1 pixel"
+    
+  semitone_test:
+    ratio: 1.059463  # 2^(1/12)
+    minimum_distance: "canvas_height / (log2(f_max/f_min) * 12)"
+    note: "Smallest musically meaningful interval"
+
+# Implementation Pattern Analysis
+implementation_patterns:
+  direct_logarithmic:
+    pattern: "std::log2 and std::pow approach"
+    advantages: ["Clear mathematical expression", "Numerically stable"]
+    performance: "Good for real-time use"
+    
+  juce_normalizable_range:
+    pattern: "NormalisableRange with 0.3f skew factor"
+    advantages: ["JUCE integration", "Parameter system compatibility"]
+    caveats: ["Skew factor must match logarithmic curve exactly"]
+    
+  lookup_table:
+    pattern: "Pre-computed frequency values"
+    advantages: ["Maximum performance", "Consistent precision"]
+    trade_offs: ["Memory usage", "Interpolation complexity"]
+
+# Enhanced KPIs
+additional_kpis:
+  musical_accuracy_score: "> 0.98"     # Octave/interval precision
+  pixel_frequency_error_max: "< 5 Hz"   # Maximum error at any pixel
+  perceptual_uniformity: "> 0.95"       # Equal visual spacing = equal musical intervals
+  boundary_precision: "> 0.999"         # Exact frequencies at canvas edges
+
+# Test Fixtures
+test_fixtures:
+  - name: "octave_relationship"
+    setup:
+      canvas_height: 600
+      f_min: 20.0
+      f_max: 20000.0
+    test_points:
+      - {y: 0, expected_freq: 20000.0}      # Top
+      - {y: 60, expected_freq: 10000.0}     # One octave down  
+      - {y: 120, expected_freq: 5000.0}     # Two octaves down
+    tolerance: 5.0  # Hz
+    
+  - name: "perfect_fifth_intervals"
+    setup:
+      base_freq: 440.0  # A4
+      fifth_freq: 660.0  # E5 (440 * 1.5)
+    verification: "Frequency ratio should be exactly 1.5"
+    
+  - name: "geometric_mean_center"
+    setup:
+      canvas_height: 1000
+      middle_y: 500
+    expected_freq: "sqrt(20 * 20000) ≈ 632.46 Hz"
+    tolerance: 2.0
+
+# Output Extensions  
+output_extensions:
+  mapping_accuracy:
+    octave_errors:
+      - octave_number: integer
+        frequency_error_hz: number
+        pixel_error: number
+    interval_precision:
+      - interval_name: string
+        expected_ratio: number
+        measured_ratio: number
+        cents_error: number
+    canvas_analysis:
+      pixels_per_octave: number
+      pixels_per_semitone: number
+      resolution_adequacy: boolean

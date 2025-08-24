@@ -1,0 +1,247 @@
+#include "PaintCanvasComponent.h"
+#include <cmath>
+
+using namespace juce;
+
+// local flag bits (kept local to UI; move to PaintQueue.h if you want shared constants)
+static constexpr uint32_t PG_FLAG_START = 1u;
+static constexpr uint32_t PG_FLAG_MOVE  = 2u;
+static constexpr uint32_t PG_FLAG_END   = 4u;
+
+// tool bits placed above low 8 bits to avoid colliding with START/MOVE/END
+static constexpr uint32_t PG_TOOL_MASK = 0xFF00u;
+static constexpr uint32_t PG_TOOL_PAINT = (1u << 8);
+static constexpr uint32_t PG_TOOL_ERASE = (1u << 9);
+static constexpr uint32_t PG_TOOL_SMUDGE = (1u << 10);
+static constexpr uint32_t PG_TOOL_PICK = (1u << 11);
+
+static inline float normCoord(float x, float width) { return x / width; }
+
+PaintCanvasComponent::PaintCanvasComponent(PaintQueue<1024>& q, ui::Tokens tokens)
+  : paintQueue_(q), tokens_(tokens)
+{
+    setInterceptsMouseClicks(true, true);
+    addMouseListener(this, true);
+    setWantsKeyboardFocus(true);
+    setOpaque(true);
+}
+
+PaintCanvasComponent::~PaintCanvasComponent()
+{
+    stopTimer();
+}
+
+void PaintCanvasComponent::setCanvasResolution(int w, int h)
+{
+    canvasW = w;
+    canvasH = h;
+    repaint();
+}
+
+void PaintCanvasComponent::resized()
+{
+    auto b = getLocalBounds().toFloat();
+    pixelSize = std::floor(std::min(b.getWidth() / (float)canvasW,
+                                    b.getHeight() / (float)canvasH));
+    if (pixelSize < 1.0f) pixelSize = 1.0f;
+}
+
+void PaintCanvasComponent::paint(Graphics& g)
+{
+    auto r = getLocalBounds().toFloat();
+    g.fillAll(tokens_.panelBase);
+
+    const float px = pixelSize;
+    g.setColour(tokens_.gridGreen.withAlpha(0.25f));
+    for (int x = 0; x <= canvasW; ++x)
+        g.drawLine(x * px, 0.0f, x * px, canvasH * px, 0.5f);
+    for (int y = 0; y <= canvasH; ++y)
+        g.drawLine(0.0f, y * px, canvasW * px, y * px, 0.5f);
+
+    g.setColour(tokens_.lcdScan);
+    for (int y = 0; y < canvasH; ++y)
+        g.fillRect(0.0f, y * px + px * 0.75f, canvasW * px, px * 0.125f);
+
+    // HUD placeholder
+    g.setColour(tokens_.hudText);
+    g.setFont(Font(13.0f, Font::bold));
+    g.drawText("SpectralCanvas Pro — CRT Canvas", getLocalBounds(), Justification::centredTop, false);
+}
+
+// Constrain point to horizontal/vertical/45deg when shift is held
+Point<float> PaintCanvasComponent::constrainPointToShift(const Point<float>& start,
+                                                         const Point<float>& current,
+                                                         const ModifierKeys& mods) const
+{
+    if (!mods.isShiftDown())
+        return current;
+
+    const float dx = current.x - start.x;
+    const float dy = current.y - start.y;
+    const float absdx = std::abs(dx);
+    const float absdy = std::abs(dy);
+
+    // horizontal
+    if (absdx > absdy * 1.5f)
+        return { current.x, start.y };
+
+    // vertical
+    if (absdy > absdx * 1.5f)
+        return { start.x, current.y };
+
+    // 45 degree (closest)
+    float avg = (dx + dy) * 0.5f;
+    return { start.x + avg, start.y + avg };
+}
+
+void PaintCanvasComponent::mouseDown(const MouseEvent& e)
+{
+    pointerDown = true;
+    lastMousePos = e.getPosition();
+    longPressStartMs = Time::getMillisecondCounter();
+    longPressFired = false;
+    startTimer(longPressThresholdMs / 2); // check twice during threshold
+
+    // Determine tool from modifiers / button
+    uint32_t tool = PG_TOOL_PAINT;
+    if (e.mods.isRightButtonDown())
+        tool = PG_TOOL_ERASE;
+    else if (e.mods.isAltDown())
+        tool = PG_TOOL_SMUDGE;
+    else if (e.mods.isCtrlDown() || e.mods.isCommandDown())
+        tool = PG_TOOL_PICK;
+
+    // If double-click, handle in mouseDoubleClick (JUCE supports it)
+    if (e.getNumberOfClicks() >= 2)
+    {
+        // place a single dot: push start+end immediately
+        PaintGesture g;
+        g.x = normCoord((float)e.x, (float)getWidth());
+        g.y = 1.0f - normCoord((float)e.y, (float)getHeight());
+        g.pressure = e.pressure;
+        g.flags = PG_FLAG_START | tool;
+        g.when = Time::getHighResolutionTicks();
+        paintQueue_.tryPush(g);
+
+        g.flags = PG_FLAG_END | tool;
+        paintQueue_.tryPush(g);
+        return;
+    }
+
+    // Normal start: compute normalized coords
+    PaintGesture g;
+    g.x = normCoord((float)e.x, (float)getWidth());
+    g.y = 1.0f - normCoord((float)e.y, (float)getHeight());
+    g.pressure = e.pressure >= 0.0f ? e.pressure : 1.0f; // fallback
+    g.flags = PG_FLAG_START | tool;
+    g.when = Time::getHighResolutionTicks();
+
+    // Attach stroke id in high bits of flags (non-standard but useful for UI-only persist)
+    currentStrokeId = nextStrokeId++;
+    // store stroke id in bits 16..31 (UI-only)
+    g.flags |= ((currentStrokeId & 0xFFFFu) << 16);
+
+    paintQueue_.tryPush(g);
+
+    repaint(); // update UI
+}
+
+void PaintCanvasComponent::mouseDrag(const MouseEvent& e)
+{
+    if (!pointerDown) return;
+
+    // cancel long-press if moved too far
+    if ((e.getPosition() - lastMousePos).getDistanceFromOrigin() > longPressSlopPx)
+        longPressStartMs = 0;
+
+    // determine tool same as mouseDown
+    uint32_t tool = PG_TOOL_PAINT;
+    if (e.mods.isRightButtonDown())
+        tool = PG_TOOL_ERASE;
+    else if (e.mods.isAltDown())
+        tool = PG_TOOL_SMUDGE;
+    else if (e.mods.isCtrlDown() || e.mods.isCommandDown())
+        tool = PG_TOOL_PICK;
+
+    // shift-constrain to 45/hor/ver if needed (use pixel coords then convert)
+    Point<float> startPt((float)lastMousePos.x, (float)lastMousePos.y);
+    Point<float> curPt((float)e.x, (float)e.y);
+    Point<float> constrained = constrainPointToShift(startPt, curPt, e.mods);
+
+    PaintGesture g;
+    g.x = normCoord(constrained.x, (float)getWidth());
+    g.y = 1.0f - normCoord(constrained.y, (float)getHeight());
+    g.pressure = e.pressure >= 0.0f ? e.pressure : 1.0f;
+    g.flags = PG_FLAG_MOVE | tool;
+    // re-attach stroke id so UI can group them
+    g.flags |= ((currentStrokeId & 0xFFFFu) << 16);
+    g.when = Time::getHighResolutionTicks();
+
+    paintQueue_.tryPush(g);
+
+    // update lastMousePos (so slop calc works)
+    lastMousePos = e.getPosition();
+
+    // repaint only the small area touched
+    repaint(getBounds().getSmallestIntegerContainer()); // TODO: restrict to dirty rect
+}
+
+void PaintCanvasComponent::mouseUp(const MouseEvent& e)
+{
+    if (!pointerDown) return;
+
+    pointerDown = false;
+    stopTimer();
+
+    uint32_t tool = PG_TOOL_PAINT;
+    if (e.mods.isRightButtonDown())
+        tool = PG_TOOL_ERASE;
+    else if (e.mods.isAltDown())
+        tool = PG_TOOL_SMUDGE;
+    else if (e.mods.isCtrlDown() || e.mods.isCommandDown())
+        tool = PG_TOOL_PICK;
+
+    PaintGesture g;
+    g.x = normCoord((float)e.x, (float)getWidth());
+    g.y = 1.0f - normCoord((float)e.y, (float)getHeight());
+    g.pressure = e.pressure >= 0.0f ? e.pressure : 1.0f;
+    g.flags = PG_FLAG_END | tool;
+    g.flags |= ((currentStrokeId & 0xFFFFu) << 16);
+    g.when = Time::getHighResolutionTicks();
+
+    paintQueue_.tryPush(g);
+
+    // reset stroke id
+    currentStrokeId = 0;
+    lastMousePos = {0,0};
+    longPressStartMs = 0;
+    longPressFired = false;
+
+    repaint();
+}
+
+void PaintCanvasComponent::mouseDoubleClick(const MouseEvent& e)
+{
+    // JUCE routes double clicks through mouseDown getNumberOfClicks >=2; this method can be used for extra handling
+    // We already handled double click in mouseDown to place a dot.
+}
+
+void PaintCanvasComponent::timerCallback()
+{
+    if (!pointerDown || longPressFired)
+        return;
+
+    const uint64_t now = Time::getMillisecondCounter();
+    if (longPressStartMs == 0) return;
+
+    if ((int)(now - longPressStartMs) >= longPressThresholdMs)
+    {
+        longPressFired = true;
+        stopTimer();
+
+        // call inspector callback on UI thread
+        if (onLongPressInspector)
+            onLongPressInspector(lastMousePos);
+        // optionally, also push a special PaintGesture that signals inspector open (not needed)
+    }
+}

@@ -1,0 +1,2 @@
+Testing hooks functionality - timestamp: 2025-08-23
+Hooks should now execute from correct path

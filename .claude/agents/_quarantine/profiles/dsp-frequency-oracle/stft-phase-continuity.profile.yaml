@@ -1,0 +1,180 @@
+# STFT Phase Continuity Profile v1.0
+# Specialized DSP Frequency Oracle variant for spectral processing validation
+
+# Migration Metadata
+source_path: "docs/agents/profiles/dsp-frequency-oracle/stft-phase-continuity.profile.yaml"
+migration_date: "2025-08-20"
+
+name: stft-phase-continuity  
+parent: dsp-frequency-oracle
+version: "1.0.0"
+specialization: "STFT processing and phase continuity validation"
+
+description: >
+  Specialized variant for validating Short-Time Fourier Transform processing integrity.
+  Ensures phase continuity, perfect reconstruction, bin frequency accuracy, and 
+  spectral processing quality in SpectralCanvas Pro's paint-to-audio synthesis.
+
+# Enhanced Triggers
+additional_triggers:
+  diff_path_matches:
+    - "Source/Spectral/STFTEngine.*"
+    - "Source/Core/SpectralSynthEngine.*"
+    - "Source/Core/SpectralPath.*"
+  diff_contains:
+    - "STFT"
+    - "FFT"
+    - "IFFT"
+    - "spectral"
+    - "phase"
+    - "window"
+    - "overlap"
+    - "reconstruction"
+
+# Specialized STFT Validations
+specialized_validations:
+  perfect_reconstruction:
+    description: "STFT→ISTFT should reconstruct original signal perfectly"
+    test_signals:
+      - "White noise"
+      - "Sine waves at various frequencies"
+      - "Chirp sweeps"
+      - "Real audio samples"
+    reconstruction_error_limit: "-80 dB"
+    measurement: "RMS error between original and reconstructed"
+    
+  phase_continuity:
+    description: "Phase should evolve continuously between frames"
+    max_phase_jump: "π radians (180 degrees)"
+    window_overlap_requirement: "> 50%"
+    phase_derivative_check: "d(phase)/dt should be smooth"
+    
+  bin_frequency_accuracy:
+    description: "FFT bins should correspond to expected frequencies"
+    formula: "bin_freq = bin_index * sample_rate / fft_size"
+    tolerance: "±0.5 Hz for audio range bins"
+    nyquist_handling: "Bin at sample_rate/2 should be handled correctly"
+
+# Window Function Analysis
+window_analysis:
+  supported_windows:
+    hann:
+      description: "Hann window (raised cosine)"
+      formula: "0.5 * (1 - cos(2π*n/N))"
+      overlap_requirement: "50% minimum"
+      perfect_reconstruction: "Yes with proper overlap"
+      
+    blackman:
+      description: "Blackman window" 
+      formula: "0.42 - 0.5*cos(2π*n/N) + 0.08*cos(4π*n/N)"
+      overlap_requirement: "75% recommended"
+      spectral_leakage: "Lower than Hann"
+      
+    rectangular:
+      description: "Rectangular (no windowing)"
+      perfect_reconstruction: "Yes but spectral artifacts"
+      use_case: "Special cases only"
+      
+  window_validation:
+    unity_gain: "Sum of overlapping windows should equal 1.0"
+    symmetry_check: "Window should be symmetric"
+    zero_endpoints: "Most windows should be zero at endpoints"
+
+# Overlap-Add Processing
+overlap_add_validation:
+  overlap_percentages:
+    - 50   # Minimum for Hann window
+    - 75   # Recommended for quality
+    - 87.5 # High quality processing
+    
+  frame_advance:
+    formula: "advance = fft_size * (1 - overlap_ratio)" 
+    constraint: "Must be integer number of samples"
+    
+  buffer_management:
+    input_buffering: "Sufficient input history for windowing"
+    output_buffering: "Overlap-add accumulation buffer"
+    latency_calculation: "Processing delay due to overlap"
+
+# Spectral Processing Integrity
+spectral_integrity:
+  magnitude_processing:
+    description: "Modifications to spectral magnitude"
+    preservation: "Phase information must be preserved"
+    artifacts: "Check for spectral smearing"
+    
+  phase_processing:
+    description: "Phase modification operations"
+    continuity_requirement: "Avoid phase discontinuities"
+    vocoder_effects: "Time-stretching, pitch-shifting validation"
+    
+  bin_interpolation:
+    description: "Frequency interpolation between bins" 
+    methods: ["Linear", "Cubic", "Spectral peak interpolation"]
+    accuracy: "Sub-bin frequency resolution"
+
+# Real-Time Processing Considerations
+real_time_constraints:
+  block_size_compatibility:
+    audio_block_sizes: [64, 128, 256, 512]
+    fft_sizes: [256, 512, 1024, 2048, 4096]
+    relationship: "FFT size should be >= audio block size"
+    
+  latency_analysis:
+    look_ahead: "Window size / 2 samples"
+    processing_delay: "Additional algorithm delay"
+    total_latency: "Sum of all delays in chain"
+    
+  cpu_efficiency:
+    fft_algorithm: "Check for efficient FFT implementation"
+    memory_access: "Cache-friendly data layouts"
+    vectorization: "SIMD optimization opportunities"
+
+# Enhanced KPIs
+additional_kpis:
+  reconstruction_quality_db: "> -80 dB"    # Perfect reconstruction accuracy
+  phase_continuity_violations: "= 0"        # Count of phase jumps > π
+  bin_frequency_accuracy_hz: "< 1 Hz"       # Frequency accuracy per bin
+  processing_artifact_score: "< 0.1"        # Subjective artifact measure
+  real_time_capability: "> 0.9"             # RT processing success rate
+
+# Test Fixtures
+test_fixtures:
+  - name: "perfect_reconstruction_sine"
+    input: "440 Hz sine wave, 1 second"
+    processing: "STFT → ISTFT with no modifications"
+    expected_snr: "> 80 dB"
+    
+  - name: "phase_continuity_sweep"
+    input: "Logarithmic frequency sweep 20-20000 Hz"
+    validation: "Phase derivative should be smooth"
+    max_discontinuity: "π radians"
+    
+  - name: "bin_accuracy_test"
+    input: "Multiple sine waves at known frequencies"
+    validation: "FFT peaks should occur at calculated bin indices"
+    tolerance: "±0.5 bins"
+    
+  - name: "overlap_add_unity"
+    test: "Sum of overlapping windows equals 1.0"
+    windows: ["hann", "blackman"]
+    overlaps: [0.5, 0.75]
+
+# Output Extensions
+output_extensions:
+  stft_quality_metrics:
+    reconstruction_snr_db: number
+    phase_jump_count: integer
+    bin_accuracy_errors: array[number]
+    window_function_health: string
+    
+  spectral_analysis:
+    frequency_response_flatness: number
+    phase_response_linearity: number
+    processing_artifacts_detected: array[string]
+    
+  performance_metrics:
+    fft_efficiency_score: number
+    memory_usage_mb: number
+    cpu_overhead_percent: number
+    real_time_margin: number

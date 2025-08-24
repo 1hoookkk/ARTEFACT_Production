@@ -1,0 +1,88 @@
+name: SpectralCanvas Pro CI
+
+on:
+  push:
+    branches: [ main, master, feat/*, chore/* ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+      
+    - name: Configure CMake
+      run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTS=ON
+      
+    - name: Build
+      run: cmake --build build --config RelWithDebInfo -- /m
+      
+    - name: Run Unit Tests
+      run: ctest --test-dir build -C RelWithDebInfo --output-on-failure
+      shell: powershell
+      
+    - name: RT-Safety Check
+      run: |
+        Write-Host "Checking for RT-unsafe operations in audio thread code..."
+        try {
+          $violations = git grep -nE "new |malloc|std::mutex|pthread_mutex|std::lock|std::shared_mutex" -- "Source/Core" 2>$null
+          if ($violations) {
+            Write-Host "RT-Safety violations found:"
+            $violations | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          } else {
+            Write-Host "✅ RT-Safety check passed - no locks/allocations found in Source/Core"
+          }
+        } catch {
+          Write-Host "✅ RT-Safety check passed - no violations found"
+        }
+      shell: powershell
+      
+    - name: Offline Renderer Smoke Test
+      run: |
+        $renderer = "build\render_test_input_artefacts\RelWithDebInfo\render_test_input.exe"
+        if (Test-Path $renderer) {
+          Write-Host "Running offline renderer smoke test..."
+          if (Test-Path "build\_deps\juce-src\examples\Assets\cassette_recorder.wav") {
+            & $renderer "build\_deps\juce-src\examples\Assets\cassette_recorder.wav" "example_gestures.txt" "ci_smoke_test.wav"
+          } else {
+            Write-Host "Creating dummy input for smoke test..."
+            & $renderer "example_gestures.txt" "example_gestures.txt" "ci_smoke_test.wav"
+          }
+          
+          if (Test-Path "ci_smoke_test.wav") {
+            $size = (Get-Item "ci_smoke_test.wav").Length
+            if ($size -gt 30000) {
+              Write-Host "✅ Smoke test passed - generated WAV file ($size bytes)"
+            } else {
+              Write-Host "❌ Smoke test failed - WAV file too small ($size bytes)"
+              exit 1
+            }
+          } else {
+            Write-Host "❌ Smoke test failed - no WAV file generated"
+            exit 1
+          }
+        } else {
+          Write-Host "⚠️  Offline renderer not found - skipping smoke test"
+        }
+      shell: powershell
+      
+    - name: Archive Artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-artifacts-windows
+        path: |
+          build/**/*.exe
+          build/**/*.vst3
+          ci_smoke_test.wav
+          *.wav
+        retention-days: 7

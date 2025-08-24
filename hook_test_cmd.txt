@@ -1,0 +1,1 @@
+Testing with command line approach instead of PowerShell files

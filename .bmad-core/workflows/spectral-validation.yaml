@@ -1,0 +1,51 @@
+# Spectral Validation Workflow
+name: spectral-validation
+id: spectral-validation
+description: Comprehensive DSP and frequency mapping validation
+
+steps:
+  - step: 1
+    name: "Mathematical Validation"
+    agent: dsp-frequency-oracle
+    task: validate-frequency-mapping
+    description: "Validate logarithmic Y→frequency mapping mathematics"
+    
+  - step: 2
+    name: "STFT Analysis"
+    agent: dsp-frequency-oracle  
+    task: analyze-stft-integrity
+    description: "Analyze STFT processing and phase continuity"
+    parallel_with: [1]
+    
+  - step: 3
+    name: "Golden Reference Testing"
+    agent: dsp-frequency-oracle
+    task: generate-golden-tests
+    description: "Test against golden reference signals"
+    depends_on: [1, 2]
+    
+  - step: 4
+    name: "Build Validation"
+    agent: build-stability-monitor
+    task: validate-cmake-config
+    description: "Ensure DSP changes don't break build"
+    parallel_with: [3]
+    
+  - step: 5
+    name: "Integration Report"
+    agent: dsp-frequency-oracle
+    task: generate-validation-report
+    description: "Comprehensive spectral processing validation report"
+    depends_on: [3, 4]
+
+triggers:
+  - ColorToSpectralMapper changes
+  - Frequency mapping modifications
+  - STFT processing updates
+  - Spectral synthesis changes
+
+outcomes:
+  - Mathematical correctness validation
+  - Phase continuity verification
+  - Golden reference test results
+  - Integration stability confirmation

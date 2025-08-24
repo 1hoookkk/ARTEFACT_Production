@@ -1,0 +1,58 @@
+# TDD Guard Configuration for SpectralCanvas
+# Fast hook-compatible configuration for Red→Green→Refactor workflow
+
+mode: command
+
+# Red phase: ensure failing tests exist before implementation
+red:
+  steps: 
+    - "ctest"
+    - "--test-dir"
+    - "build"
+    - "-C"
+    - "Debug"
+    - "-R"
+    - "SpectralSmoke"
+    - "--output-on-failure"
+
+# Green phase: all tests must pass before refactor  
+green:
+  steps:
+    - "ctest"
+    - "--test-dir" 
+    - "build"
+    - "-C"
+    - "Debug"
+    - "--output-on-failure"
+
+# TDD workflow enforcement
+requireFailingTest: true
+blockImplementWithoutFailing: true
+allowRefactorOnlyWhenGreen: true
+
+# Hook execution settings
+execution:
+  timeout: 45
+  
+# Environment
+environment:
+  CTEST_OUTPUT_ON_FAILURE: "1"
+
+# Reporting
+reporters:
+  - console
+
+# Pattern matching for test results
+failPatterns:
+  - "FAILED"
+  - "error:"
+  - "Error:"
+  - "assert"
+  - "ASSERT"
+  - "fatal"
+  - "***Failed"
+
+successPatterns:
+  - "PASSED"
+  - "100% tests passed"
+  - "passed"

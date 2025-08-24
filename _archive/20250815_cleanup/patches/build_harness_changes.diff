@@ -1,0 +1,23 @@
+diff --git a/tools/HostHarness/CMakeLists.txt b/tools/HostHarness/CMakeLists.txt
+index 0f46db6..40849ad 100644
+--- a/tools/HostHarness/CMakeLists.txt
++++ b/tools/HostHarness/CMakeLists.txt
+@@ -29,7 +29,14 @@ if(WIN32)
+     )
+ endif()
+ 
+-# Set output directory for easy location
++# Fast link & compile for harness only
+ set_target_properties(HostHarness PROPERTIES
+     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools/HostHarness"
+-)
+\ No newline at end of file
++    INTERPROCEDURAL_OPTIMIZATION FALSE
++    UNITY_BUILD ON
++    UNITY_BUILD_BATCH_SIZE 16
++)
++
++if (MSVC)
++  target_compile_options(HostHarness PRIVATE /MP /O2)
++endif()
+\ No newline at end of file

@@ -1,0 +1,4 @@
+TOP 10 SLOWEST TESTS
+===================
+1. SpectralSmoke - 0.02s
+(Only 1 runnable test found)
