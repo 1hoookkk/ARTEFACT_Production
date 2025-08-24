@@ -139,33 +139,35 @@ Feedback: Overtone guides, chord recognition
 
 Export Pod: Real-time waveform preview + drag-to-DAW export
 
-Notifications & Hooks
+Notifications & Hooks (Pushover)
 
-Mobile Notifications (Pushover):
-powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 "Your message"
+## Tooling
+- Primary notifier: PowerShell script at .claude/hooks/pushover-notifier.ps1
+- Call pattern:
+  powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 "<message>" -Title "<title>" -Priority "<0-2>"
+- Configuration: C:\Users\hooki\.claude\pushover.json with Pushover API credentials
+- Never call curl directly; always use the notifier script.
 
-Setup Pushover:
-1. Install Pushover app on phone
-2. Get credentials from https://pushover.net/
-3. Set environment variables:
-   - PUSHOVER_TOKEN = your app token
-   - PUSHOVER_USER = your user key
-   
-OR create config file: C:\Users\%USERNAME%\.claude\pushover.json
-{
-  "token": "your_app_token", 
-  "user": "your_user_key"
-}
+## Permissions
+- Allowed: Bash(powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 *)
+- Disallowed: arbitrary network calls for notifications.
 
-Auto-notify after:
-- Successful builds (cmake --build complete)
-- Test runs (ctest complete) 
-- Git commits/pushes
-- Long refactoring sessions (>10 files changed)
+## When to notify (MANDATORY - send for ALL events)
+- After successful build: "📦 Build complete" (+ target name, duration if available)
+- After tests pass: "✅ Tests passed" (+ duration, changed file count)  
+- After multi-file edit sessions > 3 files: "🎉 Task completed" (+ file count)
+- After PR create/merge: "🚀 PR <id> <action>"
+- Before launching applications: "🚀 Launching <app-name>"
+- After application launches successfully: "✅ <app-name> started"
+- On any failure: "❌ <event> failed: <one-line reason>"
+- When completing any significant task: "✅ <task-name> completed"
+- **ALWAYS notify immediately after any build, test, or launch command completes**
 
-Usage Examples:
-powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 "✅ Build completed successfully"
-powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 "🧪 All tests passing"
-powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 "🚀 Phase 2 UI updates pushed"
+## CI/CD (optional)
+- If CI is detected, add a final step that runs the notifier with job status.
+
+## Plan Mode for first-time wiring
+- For initial setup changes (hooks, CI edits), use Plan Mode and show diffs before executing.
 
 No deviation from spec without explicit user approval.
+- @CLAUDE.md @.claude\CLAUDE.md @.claude\hooks\pushover-notifier.ps1

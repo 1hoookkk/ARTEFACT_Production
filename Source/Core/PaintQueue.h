@@ -4,7 +4,7 @@
 #include <juce_graphics/juce_graphics.h>
 
 struct StrokeEvent { 
-    int x=0,y=0; 
+    float x=0.0f,y=0.0f; // Changed to float to preserve 0-1 coordinate precision
     float pressure=1.f,size=1.f,speed=0.f; 
     juce::Colour colour=juce::Colours::white; 
 };

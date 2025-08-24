@@ -96,7 +96,8 @@ public:
     
     // Legacy shims for existing calls
     void processStrokeEvent(float x, float y, float pressure, juce::Colour color) {
-        StrokeEvent e; e.x=(int)x; e.y=(int)y; e.pressure=pressure; e.colour=color; 
+        // FIX: Don't cast float coords to int - preserve precision for 0-1 range
+        StrokeEvent e; e.x=x; e.y=y; e.pressure=pressure; e.colour=color; 
         processStrokeEvent(e);
     }
     

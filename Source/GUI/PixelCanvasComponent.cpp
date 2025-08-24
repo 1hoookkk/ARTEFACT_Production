@@ -1,6 +1,7 @@
 #include "PixelCanvasComponent.h"
 #include "../Core/PluginProcessor.h"
 #include <cmath>
+#include <fstream>
 
 PixelCanvasComponent::PixelCanvasComponent()
 {
@@ -33,6 +34,15 @@ void PixelCanvasComponent::timerCallback()
     glowPhase += 0.05f;
     if (glowPhase > juce::MathConstants<float>::twoPi)
         glowPhase -= juce::MathConstants<float>::twoPi;
+    
+    // Fade tracer dots
+    for (int i = tracerDots.size() - 1; i >= 0; --i)
+    {
+        tracerDots.getReference(i).life -= 0.06f;
+        if (tracerDots[i].life <= 0.0f)
+            tracerDots.remove(i);
+    }
+    
     repaint();
 }
 
@@ -82,6 +92,14 @@ void PixelCanvasComponent::paint (juce::Graphics& g)
         float y = bounds.getY() + t * bounds.getHeight();
         g.drawLine (bounds.getX(), y, bounds.getRight(), y, 2.0f);
     }
+    
+    // Draw tracer dots (visual feedback for mouse activity)
+    for (const auto& dot : tracerDots)
+    {
+        const float radius = juce::jlimit(1.5f, 4.0f, 4.0f * dot.life);
+        g.setColour(juce::Colours::white.withAlpha(0.8f * dot.life));
+        g.fillEllipse(dot.pos.x - radius, dot.pos.y - radius, 2 * radius, 2 * radius);
+    }
 }
 
 void PixelCanvasComponent::mouseDown (const juce::MouseEvent& e)
@@ -89,10 +107,23 @@ void PixelCanvasComponent::mouseDown (const juce::MouseEvent& e)
     isDragging = true;
     lastMousePos = e.position;
     
+    // Add tracer dot for visual feedback
+    tracerDots.add({e.position, 1.0f});
+    
     // Convert mouse position to normalized canvas coordinates
     auto bounds = getLocalBounds().toFloat();
     float x = (e.position.x - bounds.getX()) / bounds.getWidth();
     float y = (e.position.y - bounds.getY()) / bounds.getHeight();
+    
+    // Debug: Log mouse down event
+    DBG("PixelCanvas mouseDown: pos(" << e.position.x << "," << e.position.y << ") norm(" << x << "," << y << ")");
+    
+    // File logging for debugging
+    std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+    if (logFile.is_open()) {
+        logFile << "MOUSE_DOWN: x=" << x << " y=" << y << " pos=(" << e.position.x << "," << e.position.y << ")\n";
+        logFile.close();
+    }
     
     // Trigger paint event - find parent editor to send stroke
     if (auto* parent = findParentComponentOfClass<juce::AudioProcessorEditor>())
@@ -102,8 +133,21 @@ void PixelCanvasComponent::mouseDown (const juce::MouseEvent& e)
             if (auto* artProcessor = dynamic_cast<ARTEFACTAudioProcessor*>(processor))
             {
                 artProcessor->processStrokeEvent(x, y, 1.0f, juce::Colours::orange);
+                DBG("PixelCanvas: Sent stroke to processor");
+            }
+            else
+            {
+                DBG("PixelCanvas: Failed to cast to ARTEFACTAudioProcessor");
             }
         }
+        else
+        {
+            DBG("PixelCanvas: No audio processor found");
+        }
+    }
+    else
+    {
+        DBG("PixelCanvas: No parent AudioProcessorEditor found");
     }
     
     repaint();
@@ -115,10 +159,16 @@ void PixelCanvasComponent::mouseDrag (const juce::MouseEvent& e)
     
     lastMousePos = e.position;
     
+    // Add tracer dot for visual feedback
+    tracerDots.add({e.position, 1.0f});
+    
     // Convert mouse position to normalized canvas coordinates
     auto bounds = getLocalBounds().toFloat();
     float x = (e.position.x - bounds.getX()) / bounds.getWidth();
     float y = (e.position.y - bounds.getY()) / bounds.getHeight();
+    
+    // Debug: Log mouse drag (less verbose)
+    DBG("PixelCanvas mouseDrag: norm(" << x << "," << y << ")");
     
     // Trigger paint event
     if (auto* parent = findParentComponentOfClass<juce::AudioProcessorEditor>())

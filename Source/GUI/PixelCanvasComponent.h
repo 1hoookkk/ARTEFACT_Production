@@ -41,4 +41,11 @@ private:
     // Mouse interaction state
     bool isDragging = false;
     juce::Point<float> lastMousePos;
+    
+    // Visual feedback for strokes
+    struct TracerDot { 
+        juce::Point<float> pos; 
+        float life = 1.0f; 
+    };
+    juce::Array<TracerDot> tracerDots;
 };

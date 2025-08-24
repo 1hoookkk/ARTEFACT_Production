@@ -111,7 +111,17 @@
       "Bash(timeout:*)",
       "Bash(./build/SpectralCanvas_artefacts/RelWithDebInfo/Standalone/SpectralCanvas Pro.exe --help)",
       "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/ntfy-notifier.ps1 \"🧪 Testing Claude Code notification system\")",
-      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 \"🧪 Testing Pushover notifications\")"
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 \"🧪 Testing Pushover notifications\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/ntfy-notifier.ps1 \"🔔 Test from workstation\" -Title \"Claude Hooks\" -Tags \"bell\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/ntfy-notifier.ps1 \"🔔 Test from workstation (fallback)\" -Title \"Claude Hooks\" -Tags \"bell\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 \"🧪 Testing Pushover notifications from Claude Code\" -Title \"SpectralCanvas Pro\" -Priority \"0\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"Get-ChildItem -Path ''build'' -Recurse -Include ''*.exe'' | Where-Object { $_astWriteTime -gt (Get-Date).AddMinutes(-2) } | Select-Object FullName, LastWriteTime\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 \"✅ Paint-to-audio pipeline restored! Fixed coordinate scaling, added visual tracers, enabled debug logging. Canvas mode active with RT-safe queue processing. Ready for testing.\" -Title \"SpectralCanvas Pro - Task Complete\" -Priority \"1\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 \"🚀 Launching SpectralCanvas Pro\" -Title \"SpectralCanvas Pro\" -Priority \"0\")",
+      "Bash(\".\\build\\SpectralCanvas_artefacts\\RelWithDebInfo\\Standalone\\SpectralCanvas Pro.exe\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"if (-not (Test-Path ''C:\\temp'')) { New-Item -ItemType Directory -Path ''C:\\temp'' }; if (Test-Path ''C:\\temp\\spectral_debug.log'') { Write-Host ''Log exists - last 5 lines:''; Get-Content ''C:\\temp\\spectral_debug.log'' -Tail 5 } else { Write-Host ''No log file found at C:\\temp\\spectral_debug.log'' }\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 \"🚀 Launching SpectralCanvas Pro (with debug logging)\" -Title \"SpectralCanvas Pro\" -Priority \"0\")",
+      "Bash(\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 \"📦 Build complete - Canvas mode fix applied! 🎨 Ready to test paint-to-audio\" -Title \"SpectralCanvas Pro\" -Priority \"0\")"
     ],
     "deny": [],
     "ask": [],

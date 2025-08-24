@@ -4,6 +4,7 @@
 #include "GUI/PluginEditorMVP.h"
 #include "GUI/PluginEditorVector.h"
 #include "GUI/PluginEditorY2K.h"
+#include <fstream>
 
 //==============================================================================
 // Constructor and Destructor
@@ -685,7 +686,7 @@ void ARTEFACTAudioProcessor::processForgeCommand(const Command& cmd)
             forgeProcessor.loadSampleIntoSlot(cmd.intParam, sampleFile);
             
             // AUDIO FIX: Switch to Forge mode for sample playback
-            currentMode = ProcessingMode::Forge;
+            // currentMode = ProcessingMode::Forge; // DISABLED: Keep Canvas mode for paint-to-audio
             // RT-safe: No logging from parameter listeners
         }
         break;
@@ -1072,6 +1073,10 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     PaintEvent paintEvent;
     while (paintQueue.pop(paintEvent))
     {
+        // DEBUG: Simple counter for audio thread (safe to increment)
+        static std::atomic<int> paintEventCount{0};
+        paintEventCount++;
+        
         // No logging on audio thread
         
         // Map Y coordinate to frequency for perceptible demo
@@ -1091,6 +1096,14 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
         // Forward the same event to the RT-safe synth engine
         SpectralSynthEngine::instance().pushGestureRT(paintEvent);
+    }
+    
+    // DEBUG: Report mode once per second (safe periodic logging)
+    static int debugModeCounter = 0;
+    if (++debugModeCounter >= int(getSampleRate()))  // Once per second
+    {
+        debugModeCounter = 0;
+        DBG("ProcessBlock: Mode=" << (int)currentMode << " (Canvas=0)");
     }
     
     // Process audio based on current mode
@@ -1243,6 +1256,16 @@ void ARTEFACTAudioProcessor::setMagicSwitch(bool enabled)
 
 void ARTEFACTAudioProcessor::processStrokeEvent(const StrokeEvent& e)
 {
+    // Debug: Log incoming stroke coordinates
+    DBG("processStrokeEvent: x=" << e.x << " y=" << e.y << " pressure=" << e.pressure);
+    
+    // File logging for debugging
+    std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+    if (logFile.is_open()) {
+        logFile << "PROCESS_STROKE: x=" << e.x << " y=" << e.y << " pressure=" << e.pressure << "\n";
+        logFile.close();
+    }
+    
     // Update UI frame for stroke-to-audio bridge
     uiFrame.pressure = juce::jlimit(0.0f, 1.0f, e.pressure);
     uiFrame.size = juce::jlimit(0.0f, 1.0f, e.size);
@@ -1251,16 +1274,20 @@ void ARTEFACTAudioProcessor::processStrokeEvent(const StrokeEvent& e)
     
     // Convert StrokeEvent to PaintEvent and push to RT-safe queue
     PaintEvent paintEvent;
-    paintEvent.nx = static_cast<float>(e.x) / 1000.0f; // Assuming x is 0-1000, normalize to 0-1
-    paintEvent.ny = static_cast<float>(e.y) / 1000.0f; // Assuming y is 0-1000, normalize to 0-1  
+    // FIX: Coordinates are already 0-1 from PixelCanvas, no need to divide by 1000
+    paintEvent.nx = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.x));
+    paintEvent.ny = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.y));
     paintEvent.pressure = e.pressure;
     paintEvent.flags = kStrokeMove; // Default to stroke move
     paintEvent.color = e.colour.getARGB(); // Convert JUCE colour to ARGB
+    
+    DBG("Converted PaintEvent: nx=" << paintEvent.nx << " ny=" << paintEvent.ny);
     
     // Push to RT-safe paint queue
     if (!paintQueue.push(paintEvent))
     {
         // Queue full - this is normal under heavy painting, just drop the event
+        DBG("Paint queue full - dropping event");
         // RT-safe: No logging from parameter listeners
     }
 }
