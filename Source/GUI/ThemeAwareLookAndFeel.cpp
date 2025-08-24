@@ -1,6 +1,9 @@
 #include "ThemeAwareLookAndFeel.h"
 
 using namespace juce;
+#if SC_EMBED_FONTS
+#include "BinaryData.h"
+#endif
 
 ThemeAwareLookAndFeel::ThemeAwareLookAndFeel()
     : tokens_(scp::y2kWinmapTokens())
@@ -213,22 +216,47 @@ Font ThemeAwareLookAndFeel::getPixelFont(float size) const
 {
     if (!pixelFont_)
     {
-        // Candidate list: user may have a MetaSynth-like font installed
-        StringArray candidates {
-            "MetaSynth", "MetaSynth Sans", "Pixel Operator", "VT323",
-            "Press Start 2P", "Fixedsys", "Terminal", "Lucida Console",
-            "Courier New"
-        };
-        auto installed = Font::findAllTypefaceNames();
-        String chosen;
-        for (auto& name : candidates)
+        // 1) Prefer embedded font if available
+#if SC_EMBED_FONTS
+        for (int i = 0; i < BinaryData::namedResourceListSize; ++i)
         {
-            if (installed.contains(name)) { chosen = name; break; }
+            String resName(BinaryData::namedResourceList[i]);
+            if (resName.endsWithIgnoreCase("_ttf") || resName.endsWithIgnoreCase("_otf"))
+            {
+                int dataSize = 0;
+                if (const void* data = BinaryData::getNamedResource(resName.toRawUTF8(), dataSize))
+                {
+                    auto typeface = Typeface::createSystemTypefaceFor(data, (size_t)dataSize);
+                    if (typeface != nullptr)
+                    {
+                        pixelFont_ = std::make_unique<Font>(typeface);
+                        break;
+                    }
+                }
+            }
         }
-        if (chosen.isNotEmpty())
-            pixelFont_ = std::make_unique<Font>(chosen, size, Font::plain);
-        else
-            pixelFont_ = std::make_unique<Font>(Font::getDefaultMonospacedFontName(), size, Font::plain);
+#endif
+
+        // 2) If no embedded font chosen, try installed candidates
+        if (!pixelFont_)
+        {
+            // Candidate list: user may have a MetaSynth-like font installed
+            StringArray candidates {
+                "MetaSynth", "MetaSynth Sans", "Pixel Operator", "VT323",
+                "Press Start 2P", "Fixedsys", "Terminal", "Lucida Console",
+                "Courier New"
+            };
+            auto installed = Font::findAllTypefaceNames();
+            String chosen;
+            for (auto& name : candidates)
+            {
+                if (installed.contains(name)) { chosen = name; break; }
+            }
+            if (chosen.isNotEmpty())
+                pixelFont_ = std::make_unique<Font>(chosen, size, Font::plain);
+            else
+                pixelFont_ = std::make_unique<Font>(Font::getDefaultMonospacedFontName(), size, Font::plain);
+        }
 
         // Slightly tighter spacing to evoke MetaSynth UI
         pixelFont_->setHeight(size);
