@@ -127,7 +127,7 @@ void ARTEFACTAudioProcessor::releaseResources()
 {
     paintEngine.releaseResources();
     sampleMaskingEngine.releaseResources();
-    spectralSynthEngine.releaseResources();
+    SpectralSynthEngine::instance().releaseResources();
     spectralSynthEngineStub.releaseResources();
     audioRecorder.releaseResources();
     // Note: ForgeProcessor doesn't have releaseResources() method yet
@@ -438,7 +438,7 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == "topNBands")
     {
         int bandCount = static_cast<int>(newValue);
-        spectralSynthEngine.setTopNBands(bandCount);
+        SpectralSynthEngine::instance().setTopNBands(bandCount);
         DBG("Top-N bands changed to: " << bandCount);
     }
     
@@ -511,32 +511,32 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     
     else if (parameterID == "maskBlend")
     {
-        spectralSynthEngine.getMaskSnapshot().setMaskBlend(newValue);
+        SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue);
         DBG("Mask blend changed to: " << (newValue * 100.0f) << "%");
     }
     else if (parameterID == "maskStrength")
     {
-        spectralSynthEngine.getMaskSnapshot().setMaskStrength(newValue);
+        SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue);
         DBG("Mask strength changed to: " << newValue);
     }
     else if (parameterID == "featherTime")
     {
-        spectralSynthEngine.getMaskSnapshot().setFeatherTime(newValue);
+        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue);
         DBG("Feather time changed to: " << (newValue * 1000.0f) << "ms");
     }
     else if (parameterID == "featherFreq")
     {
-        spectralSynthEngine.getMaskSnapshot().setFeatherFreq(newValue);
+        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue);
         DBG("Feather frequency changed to: " << newValue << "Hz");
     }
     else if (parameterID == "threshold")
     {
-        spectralSynthEngine.getMaskSnapshot().setThreshold(newValue);
+        SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue);
         DBG("Mask threshold changed to: " << newValue << "dB");
     }
     else if (parameterID == "protectHarmonics")
     {
-        spectralSynthEngine.getMaskSnapshot().setProtectHarmonics(newValue > 0.5f);
+        SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f);
         DBG("Protect harmonics changed to: " << (newValue > 0.5f ? "ON" : "OFF"));
     }
 }
@@ -812,7 +812,7 @@ void ARTEFACTAudioProcessor::processPaintCommand(const Command& cmd)
             paintData.panPosition = 0.0f;  // Will be calculated from color
             paintData.synthMode = 0;
             
-            spectralSynthEngine.processPaintStroke(paintData);
+            SpectralSynthEngine::instance().processPaintStroke(paintData);
         }
         break;
     case PaintCommandID::UpdateStroke:
@@ -833,7 +833,7 @@ void ARTEFACTAudioProcessor::processPaintCommand(const Command& cmd)
             paintData.panPosition = 0.0f;
             paintData.synthMode = 0;
             
-            spectralSynthEngine.processPaintStroke(paintData);
+            SpectralSynthEngine::instance().processPaintStroke(paintData);
         }
         break;
     case PaintCommandID::EndStroke:
@@ -1100,7 +1100,7 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         
         // Step 2: Paint-driven spectral synthesis (with harmonic quantization)
         paintEngine.processBlock(buffer);
-        spectralSynthEngine.processBlock(buffer);
+        SpectralSynthEngine::instance().processBlock(buffer);
         
         // Step 3: Tube stage final glue (vintage compression, 2nd/3rd harmonics align)  
         tubeStage.process(buffer);
