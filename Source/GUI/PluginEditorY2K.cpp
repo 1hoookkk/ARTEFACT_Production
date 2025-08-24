@@ -139,12 +139,20 @@ void PluginEditorY2K::createLeftControlPanel()
     gainSlider_->setTooltip("Master output gain");
     leftControlPanel_->addAndMakeVisible(*gainSlider_);
     
+    gainLabel_ = createLabel("Gain");
+    gainLabel_->attachToComponent(gainSlider_.get(), false);
+    leftControlPanel_->addAndMakeVisible(*gainLabel_);
+    
     // Decay rate control  
     decaySlider_ = createSlider("Decay");
     decaySlider_->setRange(0.9, 0.999, 0.001);
     decaySlider_->setValue(0.996);
     decaySlider_->setTooltip("Note decay rate");
     leftControlPanel_->addAndMakeVisible(*decaySlider_);
+    
+    decayLabel_ = createLabel("Decay");
+    decayLabel_->attachToComponent(decaySlider_.get(), false);
+    leftControlPanel_->addAndMakeVisible(*decayLabel_);
     
     // Test tone for debugging
     testToneButton_ = createToggleButton("Test Tone");
@@ -190,12 +198,20 @@ void PluginEditorY2K::createRightControlPanel()
     freqMinSlider_->setTooltip("Minimum frequency (Hz)");
     rightControlPanel_->addAndMakeVisible(*freqMinSlider_);
     
+    freqMinLabel_ = createLabel("Min Freq");
+    freqMinLabel_->attachToComponent(freqMinSlider_.get(), false);
+    rightControlPanel_->addAndMakeVisible(*freqMinLabel_);
+    
     freqMaxSlider_ = createSlider("Max Freq"); 
     freqMaxSlider_->setRange(1000.0, 16000.0, 1.0);
     freqMaxSlider_->setValue(8000.0);
     freqMaxSlider_->setSkewFactorFromMidPoint(4000.0);
     freqMaxSlider_->setTooltip("Maximum frequency (Hz)");
     rightControlPanel_->addAndMakeVisible(*freqMaxSlider_);
+    
+    freqMaxLabel_ = createLabel("Max Freq");
+    freqMaxLabel_->attachToComponent(freqMaxSlider_.get(), false);
+    rightControlPanel_->addAndMakeVisible(*freqMaxLabel_);
     
     // Wire up frequency controls
     auto updateFreqRange = [this]()
@@ -227,6 +243,16 @@ void PluginEditorY2K::createBottomPanel()
         {
             pixelCanvas_->clearCanvas();
         }
+    };
+    
+    // Preview checkbox
+    previewButton_ = createToggleButton("Preview");
+    previewButton_->setTooltip("Enable preview tone");
+    bottomPanel_->addAndMakeVisible(*previewButton_);
+    
+    previewButton_->onClick = [this]()
+    {
+        audioProcessor_.setPreviewEnabled(previewButton_->getToggleState());
     };
 }
 
@@ -301,6 +327,11 @@ void PluginEditorY2K::layoutComponents()
     if (clearButton_)
     {
         clearButton_->setBounds(bottomControls.removeFromLeft(120));
+        bottomControls.removeFromLeft(8); // spacing
+    }
+    if (previewButton_)
+    {
+        previewButton_->setBounds(bottomControls.removeFromLeft(80));
     }
     
     // Main canvas takes remaining space
@@ -312,10 +343,9 @@ void PluginEditorY2K::layoutComponents()
 
 std::unique_ptr<Slider> PluginEditorY2K::createSlider(const String& name, Slider::SliderStyle style)
 {
-    auto slider = std::make_unique<Slider>(style, Slider::TextBoxBelow);
+    auto slider = std::make_unique<Slider>(style, Slider::NoTextBox);
     slider->setName(name);
-    slider->setTextBoxStyle(Slider::TextBoxBelow, false, 80, 20);
-    slider->setColour(Slider::textBoxTextColourId, currentTokens_.valueText);
+    slider->setTextBoxStyle(Slider::NoTextBox, false, 0, 0);
     return slider;
 }
 
@@ -329,6 +359,14 @@ std::unique_ptr<TextButton> PluginEditorY2K::createTextButton(const String& name
 {
     auto button = std::make_unique<TextButton>(name);
     return button;
+}
+
+std::unique_ptr<Label> PluginEditorY2K::createLabel(const String& text)
+{
+    auto label = std::make_unique<Label>("", text);
+    label->setJustificationType(Justification::centred);
+    label->setColour(Label::textColourId, currentTokens_.labelText);
+    return label;
 }
 
 bool PluginEditorY2K::keyPressed(const KeyPress& key, juce::Component* originatingComponent)

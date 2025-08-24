@@ -62,6 +62,13 @@ private:
     std::unique_ptr<juce::Slider> freqMaxSlider_;
     std::unique_ptr<juce::ToggleButton> testToneButton_;
     std::unique_ptr<juce::TextButton> clearButton_;
+    std::unique_ptr<juce::ToggleButton> previewButton_;
+    
+    // Labels for sliders
+    std::unique_ptr<juce::Label> gainLabel_;
+    std::unique_ptr<juce::Label> decayLabel_;
+    std::unique_ptr<juce::Label> freqMinLabel_;
+    std::unique_ptr<juce::Label> freqMaxLabel_;
     
     #if defined(ENABLE_DEBUG_BUTTON)
     std::unique_ptr<juce::TextButton> debugButton_;
@@ -103,6 +110,7 @@ private:
                                                juce::Slider::SliderStyle style = juce::Slider::RotaryHorizontalVerticalDrag);
     std::unique_ptr<juce::ToggleButton> createToggleButton(const juce::String& name);
     std::unique_ptr<juce::TextButton> createTextButton(const juce::String& name);
+    std::unique_ptr<juce::Label> createLabel(const juce::String& text);
     
     // Timer callback for periodic updates
     void timerCallback() override;
