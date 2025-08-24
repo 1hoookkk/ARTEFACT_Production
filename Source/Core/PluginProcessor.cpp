@@ -920,15 +920,13 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                                  " samples=" + juce::String(buffer.getNumSamples()));
     }
 
-    // ALWAYS tone for immediate audible confirmation (temporary debug)
-    // Guard with compile-time macro so this is easy to remove.
-    #ifndef SANDBOX_DISABLE_ALWAYS_TONE
+    // DEBUG TONE: removed for production. To re-enable for local debugging define ENABLE_SANDBOX_TONE
+    #if defined(ENABLE_SANDBOX_TONE)
     static float __dbg_phase = 0.0f;
     const float __dbg_sr = float(getSampleRate());
-    const float __dbg_twopi = 2.0f * 3.14159265f;
-    const float __dbg_freq = currentFrequency.load(); // Maps to paint Y position
+    const float __dbg_twopi = 2.0f * float(M_PI);
+    const float __dbg_freq = 440.0f;
     const float __dbg_gain = 0.14f;
-
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
     {
         float* out = buffer.getWritePointer(ch);
