@@ -20,6 +20,26 @@ public:
     void setMasterGain(float v) noexcept { masterGain_.store(v); }
     void setNumPartials(int n) noexcept { numPartials_.store( juce::jlimit(1, kMaxPartials, n)); }
     void setMaxVoices(int v) noexcept { maxVoices_.store( juce::jlimit(1, kMaxVoices, v)); }
+    
+    // ========== TEMPORARY DEBUG SHIMS ==========
+    void releaseResources() noexcept {}
+    void setTopNBands(int) noexcept {}
+    void processBlock(juce::AudioBuffer<float>&) noexcept {}
+    bool isMulticoreActive() const noexcept { return false; }
+    int getSeqFallbackCount() const noexcept { return 0; }
+    
+    struct PaintData { float dummy = 0; };
+    struct MaskSnapshot { 
+        void setMaskBlend(float) {} 
+        void setMaskStrength(float) {}
+        void setFeatherTime(float) {}
+        void setFeatherFreq(float) {}
+        void setThreshold(float) {}
+        void setProtectHarmonics(bool) {}
+    };
+    MaskSnapshot getMaskSnapshot() const noexcept { return MaskSnapshot(); }
+    void processPaintStroke(const PaintData&) noexcept {}
+    // ========== END TEMPORARY DEBUG SHIMS ==========
 
 private:
     SpectralSynthEngine() noexcept;

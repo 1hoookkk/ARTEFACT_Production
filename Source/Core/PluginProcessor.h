@@ -151,6 +151,7 @@ private:
     float previewPhase = 0.0f;
     std::atomic<int> previewEnabled{0};
     std::atomic<float> masterGain{0.7f};
+    std::atomic<float> currentFrequency{440.0f}; // Debug: maps paint Y to sine frequency
     
     // Startup ping to prove audio device is working (can't lie)
     double startupPhase = 0.0;

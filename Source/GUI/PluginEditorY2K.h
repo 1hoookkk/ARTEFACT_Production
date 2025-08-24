@@ -33,7 +33,7 @@ public:
     void resized() override;
 
     // Key handling for panic hotkey and accessibility
-    bool keyPressed(const juce::KeyPress& key) override;
+    bool keyPressed(const juce::KeyPress& key, juce::Component* originatingComponent) override;
 
     // Accessibility and safety
     void panicDisableAllEffects();
@@ -62,6 +62,10 @@ private:
     std::unique_ptr<juce::Slider> freqMaxSlider_;
     std::unique_ptr<juce::ToggleButton> testToneButton_;
     std::unique_ptr<juce::TextButton> clearButton_;
+    
+    #if !defined(NDEBUG)
+    std::unique_ptr<juce::TextButton> debugButton_;
+    #endif
     
     // Parameter attachments (using correct JUCE types)
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;

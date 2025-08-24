@@ -100,6 +100,26 @@ void PluginEditorY2K::createControls()
     pixelCanvas_->setReduceMotion(reduceMotion_.load());
     addAndMakeVisible(*pixelCanvas_);
     
+    #if !defined(NDEBUG)
+    // Debug button for testing paint queue
+    auto dbgBtn = std::make_unique<TextButton>("DBG Push");
+    dbgBtn->onClick = [this]()
+    {
+        #include "../Core/DebugGlobalQueue.h"
+        if (dbg::globalPaintQueue)
+        {
+            PaintEvent g;
+            g.nx = 0.5f; g.ny = 0.5f; g.pressure = 1.0f; g.flags = 1; g.color = 0;
+            dbg::globalPaintQueue->push(g);
+            juce::Logger::writeToLog("DBG: editor pushed artificial paint gesture");
+        }
+    };
+    dbgBtn->setBounds(8, 8, 92, 28);
+    addAndMakeVisible(dbgBtn.get());
+    // Store in a member variable to keep alive - add to header if needed
+    debugButton_ = std::move(dbgBtn);
+    #endif
+    
     // Create control panels
     createLeftControlPanel();
     createRightControlPanel();
@@ -310,7 +330,7 @@ std::unique_ptr<TextButton> PluginEditorY2K::createTextButton(const String& name
     return button;
 }
 
-bool PluginEditorY2K::keyPressed(const KeyPress& key)
+bool PluginEditorY2K::keyPressed(const KeyPress& key, juce::Component* originatingComponent)
 {
     // Panic hotkey - immediately disable all effects
     if (key == KeyPress::escapeKey || 

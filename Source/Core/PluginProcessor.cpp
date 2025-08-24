@@ -4,6 +4,7 @@
 #include "GUI/PluginEditorMVP.h"
 #include "GUI/PluginEditorVector.h"
 #include "GUI/PluginEditorY2K.h"
+#include "DebugGlobalQueue.h"
 
 //==============================================================================
 // Constructor and Destructor
@@ -89,6 +90,11 @@ ARTEFACTAudioProcessor::~ARTEFACTAudioProcessor()
 void ARTEFACTAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
+    
+    // Initialize debug global queue shim
+    static SpectralPaintQueue localStaticQueue(4096); // static storage lifetime
+    if (dbg::globalPaintQueue == nullptr)
+        dbg::globalPaintQueue = &localStaticQueue;
     
     // Prepare all processors
     forgeProcessor.prepareToPlay(sampleRate, samplesPerBlock);
@@ -904,6 +910,38 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 {
     juce::ScopedNoDenormals noDenormals;
     
+    // ========== DEBUG: processBlock heartbeat & unconditional test tone ==========
+    static int __dbg_pb_cnt = 0;
+    if (++__dbg_pb_cnt == 512) // throttle logs
+    {
+        __dbg_pb_cnt = 0;
+        juce::Logger::writeToLog("DBG: processBlock() heartbeat sr=" + juce::String(getSampleRate()) +
+                                 " ch=" + juce::String(buffer.getNumChannels()) +
+                                 " samples=" + juce::String(buffer.getNumSamples()));
+    }
+
+    // ALWAYS tone for immediate audible confirmation (temporary debug)
+    // Guard with compile-time macro so this is easy to remove.
+    #ifndef SANDBOX_DISABLE_ALWAYS_TONE
+    static float __dbg_phase = 0.0f;
+    const float __dbg_sr = float(getSampleRate());
+    const float __dbg_twopi = 2.0f * 3.14159265f;
+    const float __dbg_freq = currentFrequency.load(); // Maps to paint Y position
+    const float __dbg_gain = 0.14f;
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        float* out = buffer.getWritePointer(ch);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            out[i] += __dbg_gain * sinf(__dbg_phase);
+            __dbg_phase += __dbg_twopi * __dbg_freq / __dbg_sr;
+            if (__dbg_phase > __dbg_twopi) __dbg_phase -= __dbg_twopi;
+        }
+    }
+    #endif
+    // ========== END DEBUG ==========
+    
     // 🚨 STARTUP PING: Audible proof that audio device is working (can't lie)
     if (warmupSamples > 0)
     {
@@ -1013,13 +1051,32 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    // Process paint events from queue (RT-safe)
+    // Process paint events from queue (RT-safe) and forward to both engines
+    // Consume each event exactly once, then fan out:
+    //  - PaintEngine for visual/masking updates
+    //  - SpectralSynthEngine for additive synthesis
     PaintEvent paintEvent;
-    while (paintQueue.pop(paintEvent))
+    #if !defined(NDEBUG)
+    static int __dbg_pop_counter = 0;
+    #endif
+    while (dbg::globalPaintQueue->pop(paintEvent))
     {
-        // Use the actual PaintEngine API: beginStroke/updateStroke/endStroke
-        PaintEngine::Point pos(paintEvent.nx, paintEvent.ny);
+        #if !defined(NDEBUG)
+        if (++__dbg_pop_counter >= 1)
+        {
+            __dbg_pop_counter = 0;
+            juce::Logger::writeToLog("DBG_AUDIO: popped gesture x=" + juce::String(paintEvent.nx) +
+                                     " y=" + juce::String(paintEvent.ny) + " p=" + juce::String(paintEvent.pressure));
+        }
+        #endif
         
+        // Map Y coordinate to frequency for perceptible demo
+        float y = paintEvent.ny; // ensure normalized 0..1
+        float f = 80.0f * std::pow((3000.0f/80.0f), juce::jlimit(0.0f, 1.0f, y));
+        currentFrequency.store(f);
+
+        PaintEngine::Point pos(paintEvent.nx, paintEvent.ny);
+
         if (paintEvent.flags == kStrokeStart) {
             paintEngine.beginStroke(pos, paintEvent.pressure);
         } else if (paintEvent.flags == kStrokeMove) {
@@ -1027,12 +1084,10 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         } else if (paintEvent.flags == kStrokeEnd) {
             paintEngine.endStroke();
         }
+
+        // Forward the same event to the RT-safe synth engine
+        SpectralSynthEngine::instance().pushGestureRT(paintEvent);
     }
-    
-    // Process paint gestures through new RT-safe SpectralSynthEngine
-    PaintEvent g;
-    while (paintQueue.pop(g))
-        SpectralSynthEngine::instance().pushGestureRT(g);
     
     SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
 

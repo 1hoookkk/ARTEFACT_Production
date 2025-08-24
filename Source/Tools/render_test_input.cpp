@@ -1,6 +1,6 @@
 // render_test_input.cpp
-// Simple headless renderer that runs the EMU->Spectral->Tube chain on an input WAV,
-// injects simulated paint gestures (time + yPos + pressure), and writes an output WAV.
+// Simple headless renderer that overlays RT-safe spectral synthesis onto an input WAV
+// using simulated paint gestures (time + yPos + pressure), then writes an output WAV.
 //
 // Usage:
 //   render_test_input <input_wav> <gestures.txt> <output_wav>
@@ -14,16 +14,14 @@
 #include <juce_core/juce_core.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_events/juce_events.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string>
 #include <sstream>
 
-#include "../Core/EMUFilter.h"
-#include "../Core/TubeStage.h"
 #include "../Synthesis/SpectralSynthEngineRTStub.h"
-#include "../Core/GestureSnapshot.h"
 
 using namespace juce;
 using namespace scp;
@@ -62,7 +60,7 @@ int main (int argc, char* argv[]) {
     const char* gesturesPath = argv[2];
     const char* outputPath = argv[3];
 
-    // Initialize JUCE minimal runtime
+    // Initialize JUCE minimal runtime (use GUI initializer for audio processing)
     ScopedJuceInitialiser_GUI juceInit;
 
     AudioFormatManager fmtMgr;
@@ -93,21 +91,10 @@ int main (int argc, char* argv[]) {
         return 3;
     }
 
-    // Prepare engine objects - using RT-safe SpectralSynthEngineRTStub
-    EMUFilter emu;
-    TubeStage tube;
-    SpectralSynthEngineRTStub& synth = SpectralSynthEngineRTStub::instance(); // RT-safe singleton
-
+    // Prepare RT-safe engine (stub is dependency-free)
+    SpectralSynthEngineRTStub& synth = SpectralSynthEngineRTStub::instance();
     const int blockSize = 512;
-    emu.prepareToPlay(sampleRate, blockSize);
-    tube.prepare(sampleRate, blockSize);
     synth.prepare(sampleRate, blockSize);
-
-    // Default control settings (can be changed by editing here)
-    emu.setCutoff(0.7f);        // Normalized cutoff 
-    emu.setResonance(0.3f);     // Moderate resonance
-    tube.setDrive(6.0f);        // EMU-style drive
-    tube.setBias(0.1f);         // Slight asymmetric bias
 
     // Process in block-sized chunks and inject gestures at scheduled times.
     int totalFrames = outBuffer.getNumSamples();
@@ -147,15 +134,8 @@ int main (int argc, char* argv[]) {
             tempBuf.copyFrom(ch, 0, outBuffer, ch, framesProcessed, framesThisBlock);
         }
 
-        // 1) EMU pre-sweetening (in-place on tempBuf)
-        AudioSampleBuffer emuBuffer(tempBuf.getArrayOfWritePointers(), numChannels, framesThisBlock);
-        emu.processBlock(emuBuffer);
-
-        // 2) Spectral synth processes paint gestures and generates additive synthesis
+        // Overlay RT-safe spectral synth (gestures → additive tones)
         synth.processAudioBlock(tempBuf, sampleRate);
-
-        // 3) Tube stage
-        tube.process(tempBuf);
 
         // Copy tempBuf back to outBuffer at the right offset
         for (int ch=0; ch<numChannels; ++ch) {

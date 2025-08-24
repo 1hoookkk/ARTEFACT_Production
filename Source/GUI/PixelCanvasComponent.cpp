@@ -262,10 +262,21 @@ void PixelCanvasComponent::pushPaintGestureToQueue(float normalizedX, float norm
     
     PaintEvent event(normalizedX, normalizedY, pressure, flags, 0);
     
-    // Try to push to queue (RT-safe, non-blocking)
-    if (!paintQueue_->push(event))
+    // DEBUG: log UI push
+    #if !defined(NDEBUG)
+    juce::Logger::writeToLog("DBG_UI: push gesture x=" + juce::String(normalizedX) + " y=" + juce::String(normalizedY) + " p=" + juce::String(pressure));
+    #endif
+    
+    // Use global queue shim for testing
+    #include "../Core/DebugGlobalQueue.h"
+    if (dbg::globalPaintQueue && !dbg::globalPaintQueue->push(event))
     {
         // Queue full - could log this in debug builds
+        DBG("Paint queue full - dropping gesture");
+    }
+    else if (paintQueue_ && !paintQueue_->push(event))
+    {
+        // Fallback to original queue
         DBG("Paint queue full - dropping gesture");
     }
 }
@@ -385,26 +396,23 @@ void PixelCanvasComponent::drawCRTEffects(Graphics& g)
 
 void PixelCanvasComponent::drawHUDOverlay(Graphics& g)
 {
-    // Small HUD showing canvas info in Y2K pixel font style
-    g.setColour(tokens_.hudText.withAlpha(0.9f));
-    
-    // Use pixel font if available from LookAndFeel
-    Font hudFont = Font(Font::getDefaultMonospacedFontName(), 10.0f, Font::bold);
+    // Small HUD showing canvas info in MetaSynth-style pixel font
+    String hudText = "SpectralCanvas • 128×128 • Y2K";
+
     if (auto* laf = dynamic_cast<ThemeAwareLookAndFeel*>(getLookAndFeel()))
     {
-        hudFont = laf->getPixelFont(10.0f);
+        laf->drawPixelFont(g, hudText, Rectangle<float>(9, 8, 220, 16), Justification::left);
     }
-    
-    g.setFont(hudFont);
-    
-    // Draw subtle shadow for readability
-    g.setColour(tokens_.panelBase.withAlpha(0.8f));
-    String hudText = "SpectralCanvas • 128×128 • Y2K";
-    g.drawText(hudText, 10, 9, 200, 14, Justification::left);
-    
-    // Main text
-    g.setColour(tokens_.hudText);
-    g.drawText(hudText, 9, 8, 200, 14, Justification::left);
+    else
+    {
+        g.setColour(tokens_.hudText.withAlpha(0.95f));
+        g.setFont(Font(Font::getDefaultMonospacedFontName(), 10.0f, Font::bold));
+        // Basic shadow + text as fallback
+        g.setColour(tokens_.panelBase.withAlpha(0.8f));
+        g.drawText(hudText, 10, 9, 200, 14, Justification::left);
+        g.setColour(tokens_.hudText);
+        g.drawText(hudText, 9, 8, 200, 14, Justification::left);
+    }
     
     // Show paint queue status if available
     if (paintQueue_)
