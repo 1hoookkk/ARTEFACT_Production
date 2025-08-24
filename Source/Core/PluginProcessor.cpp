@@ -917,24 +917,32 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         #endif
     }
 
-    // DEBUG TONE: removed for production. To re-enable for local debugging define ENABLE_SANDBOX_TONE
-    #if defined(ENABLE_SANDBOX_TONE)
-    static float __dbg_phase = 0.0f;
-    const float __dbg_sr = float(getSampleRate());
-    const float __dbg_twopi = 2.0f * float(M_PI);
-    const float __dbg_freq = 440.0f;
-    const float __dbg_gain = 0.14f;
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    // Audio routing: Use SpectralSynthEngine when initialized, fallback to debug tone
+    if (SpectralSynthEngine::instance().isInitialized())
     {
-        float* out = buffer.getWritePointer(ch);
-        for (int i = 0; i < buffer.getNumSamples(); ++i)
-        {
-            out[i] += __dbg_gain * sinf(__dbg_phase);
-            __dbg_phase += __dbg_twopi * __dbg_freq / __dbg_sr;
-            if (__dbg_phase > __dbg_twopi) __dbg_phase -= __dbg_twopi;
-        }
+        SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
     }
-    #endif
+    else
+    {
+        // Fallback debug tone when engine not yet ready
+        #if defined(ENABLE_SANDBOX_TONE)
+        static float __dbg_phase = 0.0f;
+        const float __dbg_sr = float(getSampleRate());
+        const float __dbg_twopi = 2.0f * float(M_PI);
+        const float __dbg_freq = 440.0f;
+        const float __dbg_gain = 0.14f;
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        {
+            float* out = buffer.getWritePointer(ch);
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                out[i] += __dbg_gain * sinf(__dbg_phase);
+                __dbg_phase += __dbg_twopi * __dbg_freq / __dbg_sr;
+                if (__dbg_phase > __dbg_twopi) __dbg_phase -= __dbg_twopi;
+            }
+        }
+        #endif
+    }
     // ========== END DEBUG ==========
     
     // 🚨 STARTUP PING: Audible proof that audio device is working (can't lie)
@@ -1086,8 +1094,6 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         SpectralSynthEngine::instance().pushGestureRT(paintEvent);
     }
     
-    SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
-
     // Process audio based on current mode
     switch (currentMode)
     {

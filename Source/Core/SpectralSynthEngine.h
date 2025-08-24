@@ -15,6 +15,8 @@ public:
     void prepare(double sampleRate, int maxBlockSize) noexcept;
     void pushGestureRT(const PaintEvent& g) noexcept;
     void processAudioBlock(juce::AudioBuffer<float>& buffer, double sampleRate) noexcept;
+    
+    bool isInitialized() const noexcept { return sampleRate_ > 0.0; }
 
     void setHarmonicDepth(float v) noexcept { harmonicDepth_.store(v); }
     void setMasterGain(float v) noexcept { masterGain_.store(v); }
