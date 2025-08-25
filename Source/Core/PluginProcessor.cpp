@@ -1,4 +1,4 @@
-﻿// Source/PluginProcessor.cpp
+// Source/PluginProcessor.cpp
 #include "PluginProcessor.h"
 #include "GUI/PluginEditor.h"
 #include "GUI/PluginEditorMVP.h"
@@ -445,11 +445,7 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     {
         int bandCount = static_cast<int>(newValue);
         SpectralSynthEngine::instance().setTopNBands(bandCount);
-<<<<<<< HEAD
-        DBG("Top-N bands changed to: " << bandCount);
-=======
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     
     //==============================================================================
@@ -522,56 +518,32 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == "maskBlend")
     {
         SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue);
-<<<<<<< HEAD
-        DBG("Mask blend changed to: " << (newValue * 100.0f) << "%");
-=======
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "maskStrength")
     {
         SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue);
-<<<<<<< HEAD
-        DBG("Mask strength changed to: " << newValue);
-=======
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherTime")
     {
         SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue);
-<<<<<<< HEAD
-        DBG("Feather time changed to: " << (newValue * 1000.0f) << "ms");
-=======
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherFreq")
     {
         SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue);
-<<<<<<< HEAD
-        DBG("Feather frequency changed to: " << newValue << "Hz");
-=======
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "threshold")
     {
         SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue);
-<<<<<<< HEAD
-        DBG("Mask threshold changed to: " << newValue << "dB");
-=======
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "protectHarmonics")
     {
         SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f);
-<<<<<<< HEAD
-        DBG("Protect harmonics changed to: " << (newValue > 0.5f ? "ON" : "OFF"));
-=======
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
 }
 

@@ -112,8 +112,8 @@ public:
     // Performance monitoring
     float getCurrentCPULoad() const { return cpuLoad.load(); }
     int getActiveOscillatorCount() const { return activeOscillators.load(); }
-    
-private:
+
+public:  // Nested classes need to be public for forward declarations
     //==============================================================================
     // Internal Classes
     
@@ -301,6 +301,7 @@ private:
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CanvasRegion)
     };
     
+private:
     //==============================================================================
     // Member Variables
     

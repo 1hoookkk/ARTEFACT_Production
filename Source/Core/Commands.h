@@ -102,14 +102,16 @@ struct Command
     void setStringParam(const juce::String& str)
     {
         const char* cStr = str.toUTF8();
-        strncpy_s(stringParam, sizeof(stringParam), cStr, _TRUNCATE);
+        strncpy(stringParam, cStr, sizeof(stringParam) - 1);
+        stringParam[sizeof(stringParam) - 1] = '\0';  // Ensure null termination
     }
     
     void setStringParam(const char* cStr)
     {
         if (cStr != nullptr)
         {
-            strncpy_s(stringParam, sizeof(stringParam), cStr, _TRUNCATE);
+            strncpy(stringParam, cStr, sizeof(stringParam) - 1);
+            stringParam[sizeof(stringParam) - 1] = '\0';  // Ensure null termination
         }
         else
         {
