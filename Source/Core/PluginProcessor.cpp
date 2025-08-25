@@ -1058,6 +1058,22 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 {
     juce::ScopedNoDenormals noDenormals;
     
+    // RT-safety checks
+    jassert(buffer.getNumSamples() > 0);
+    jassert(buffer.getNumChannels() > 0);
+    if (buffer.getNumSamples() <= 0 || buffer.getNumChannels() <= 0)
+        return;
+    // Ensure preallocated scratch buffers are large enough for this block
+    const int neededChannels = buffer.getNumChannels();
+    const int neededSamples  = buffer.getNumSamples();
+    if (neededChannels > preallocChannels || neededSamples > preallocBlockSize)
+    {
+        preallocChannels  = juce::jmax(preallocChannels, neededChannels);
+        preallocBlockSize = juce::jmax(preallocBlockSize, neededSamples);
+        preallocMasking.setSize(preallocChannels, preallocBlockSize, false, false, true);
+        preallocPaint.setSize(preallocChannels, preallocBlockSize, false, false, true);
+    }
+    
     // Update Phase 2 features: Host sync and modulation
     auto playHead = getPlayHead();
     if (playHead != nullptr)
@@ -1088,30 +1104,42 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // DEBUG heartbeat removed from audio thread: no logging in processBlock
 
     // Audio routing: Use SpectralSynthEngine when initialized, fallback to debug tone
-    if (SpectralSynthEngine::instance().isInitialized())
+    try
     {
-        SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
-    }
-    else
-    {
-        // Fallback debug tone when engine not yet ready
-        #if defined(ENABLE_SANDBOX_TONE)
-        static float __dbg_phase = 0.0f;
-        const float __dbg_sr = float(getSampleRate());
-        const float __dbg_twopi = 2.0f * float(M_PI);
-        const float __dbg_freq = 440.0f;
-        const float __dbg_gain = 0.14f;
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        if (SpectralSynthEngine::instance().isInitialized())
         {
-            float* out = buffer.getWritePointer(ch);
-            for (int i = 0; i < buffer.getNumSamples(); ++i)
-            {
-                out[i] += __dbg_gain * sinf(__dbg_phase);
-                __dbg_phase += __dbg_twopi * __dbg_freq / __dbg_sr;
-                if (__dbg_phase > __dbg_twopi) __dbg_phase -= __dbg_twopi;
-            }
+            SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
         }
-        #endif
+        else
+        {
+            // Fallback debug tone when engine not yet ready
+            #if defined(ENABLE_SANDBOX_TONE)
+            static float __dbg_phase = 0.0f;
+            const float __dbg_sr = float(getSampleRate());
+            const float __dbg_twopi = 2.0f * float(M_PI);
+            const float __dbg_freq = 440.0f;
+            const float __dbg_gain = 0.14f;
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            {
+                float* out = buffer.getWritePointer(ch);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    out[i] += __dbg_gain * sinf(__dbg_phase);
+                    __dbg_phase += __dbg_twopi * __dbg_freq / __dbg_sr;
+                    if (__dbg_phase > __dbg_twopi) __dbg_phase -= __dbg_twopi;
+                }
+            }
+            #endif
+        }
+    }
+    catch (...)
+    {
+        buffer.clear();
+        try {
+            std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+            if (logFile.is_open()) logFile << "CRASH_GUARD: SpectralSynthEngine.processAudioBlock threw" << "\n";
+        } catch (...) {}
+        return;
     }
     // ========== END DEBUG ==========
     
@@ -1213,17 +1241,27 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // Process SampleMaskingEngine first (it can run alongside other modes)
     if (sampleMaskingEngine.hasSample())
     {
-        const int ch = buffer.getNumChannels();
-        const int n  = buffer.getNumSamples();
-        // Use preallocated buffer alias to avoid per-block allocations
-        juce::AudioBuffer<float> maskingView(preallocMasking.getArrayOfWritePointers(), ch, n);
-        maskingView.clear();
-        sampleMaskingEngine.processBlock(maskingView);
-
-        // Mix the masking engine output into the main buffer (conservative level)
-        for (int i = 0; i < ch; ++i)
+        try
         {
-            buffer.addFrom(i, 0, maskingView, i, 0, n, 0.2f);
+            const int ch = buffer.getNumChannels();
+            const int n  = buffer.getNumSamples();
+            // Use preallocated buffer alias to avoid per-block allocations
+            juce::AudioBuffer<float> maskingView(preallocMasking.getArrayOfWritePointers(), ch, n);
+            maskingView.clear();
+            sampleMaskingEngine.processBlock(maskingView);
+
+            // Mix the masking engine output into the main buffer (conservative level)
+            for (int i = 0; i < ch; ++i)
+            {
+                buffer.addFrom(i, 0, maskingView, i, 0, n, 0.2f);
+            }
+        }
+        catch (...)
+        {
+            try {
+                std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+                if (logFile.is_open()) logFile << "CRASH_GUARD: SampleMaskingEngine.processBlock threw" << "\n";
+            } catch (...) {}
         }
     }
 
@@ -1274,11 +1312,23 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // Canvas mode: Spectral synthesis with optional secret sauce processing
         
         // Step 1: Paint-driven spectral synthesis (core functionality)
-        paintEngine.processBlock(buffer);
-        SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
+        // RT-safety: Ensure engines are valid before processing
+        jassert(getSampleRate() > 0);
+        try { paintEngine.processBlock(buffer); } catch (...) {
+            buffer.clear();
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: PaintEngine.processBlock threw" << "\n"; } catch (...) {}
+            break;
+        }
+        try { SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate()); } catch (...) {
+            buffer.clear();
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: SpectralSynthEngine.processAudioBlock threw (Canvas)" << "\n"; } catch (...) {}
+            break;
+        }
         
         // Step 2: Also process SpectralSynthEngineStub for test tone and debugging
-        spectralSynthEngineStub.processBlock(buffer, &paintQueue);
+        try { spectralSynthEngineStub.processBlock(buffer, &paintQueue); } catch (...) {
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: spectralSynthEngineStub.processBlock threw" << "\n"; } catch (...) {}
+        }
         
         // Step 3: Secret sauce processing with parallel blend (Phase 2 feature)
         if (!bypassSecretSauce.load()) {
@@ -1297,8 +1347,12 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                     wetBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
                 
                 // Apply character processing to wet buffer
-                emuFilter.processBlock(wetBuffer);
-                tubeStage.process(wetBuffer);
+                try { emuFilter.processBlock(wetBuffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: emuFilter.processBlock threw (wet)" << "\n"; } catch (...) {}
+                }
+                try { tubeStage.process(wetBuffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: tubeStage.process threw (wet)" << "\n"; } catch (...) {}
+                }
                 
                 // Equal-power crossfade between dry and wet
                 const float dryGain = std::sqrt(1.0f - characterBlend);
@@ -1318,15 +1372,22 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             else
             {
                 // 100% character processing, no parallel blend needed
-                emuFilter.processBlock(buffer);
-                tubeStage.process(buffer);
+                try { emuFilter.processBlock(buffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: emuFilter.processBlock threw (dry)" << "\n"; } catch (...) {}
+                }
+                try { tubeStage.process(buffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: tubeStage.process threw (dry)" << "\n"; } catch (...) {}
+                }
             }
         }
         break;
         
     case ProcessingMode::Forge:
         // Forge mode: Only ForgeProcessor
-        forgeProcessor.processBlock(buffer, midi);
+        try { forgeProcessor.processBlock(buffer, midi); } catch (...) {
+            buffer.clear();
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: forgeProcessor.processBlock threw" << "\n"; } catch (...) {}
+        }
         break;
         
     case ProcessingMode::Hybrid:
@@ -1338,10 +1399,18 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             paintView.clear();
             
             // Process paint engine with character chain into separate buffer
-            emuFilter.processBlock(paintView);
-            paintEngine.processBlock(paintView);
-            SpectralSynthEngine::instance().processAudioBlock(paintView, getSampleRate());
-            tubeStage.process(paintView);
+            try { emuFilter.processBlock(paintView); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: emuFilter.processBlock threw (hybrid)" << "\n"; } catch (...) {}
+            }
+            try { paintEngine.processBlock(paintView); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: PaintEngine.processBlock threw (hybrid)" << "\n"; } catch (...) {}
+            }
+            try { SpectralSynthEngine::instance().processAudioBlock(paintView, getSampleRate()); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: SpectralSynthEngine.processAudioBlock threw (hybrid)" << "\n"; } catch (...) {}
+            }
+            try { tubeStage.process(paintView); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: tubeStage.process threw (hybrid)" << "\n"; } catch (...) {}
+            }
             
             // Process forge engine into main buffer (no character processing for pure forge)
             forgeProcessor.processBlock(buffer, midi);
@@ -1451,14 +1520,60 @@ void ARTEFACTAudioProcessor::setMagicSwitch(bool enabled)
 
 void ARTEFACTAudioProcessor::processStrokeEvent(const StrokeEvent& e)
 {
-    // Debug: Log incoming stroke coordinates
-    DBG("processStrokeEvent: x=" << e.x << " y=" << e.y << " pressure=" << e.pressure);
-    
-    // File logging for debugging
-    std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
-    if (logFile.is_open()) {
-        logFile << "PROCESS_STROKE: x=" << e.x << " y=" << e.y << " pressure=" << e.pressure << "\n";
-        logFile.close();
+    // Debug: Log incoming stroke coordinates (clamped for safety)
+    const float clampedX = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.x));
+    const float clampedY = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.y));
+    DBG("processStrokeEvent: x=" << clampedX << " y=" << clampedY << " pressure=" << e.pressure);
+
+    // Throttled file logging with stroke IDs to reduce spam
+    // Detect stroke lifecycle from pressure: start(~1), move(0<.. <1), end(~0)
+    static std::atomic<long long> globalStrokeId{0};
+    thread_local long long currentStrokeId = -1;
+    thread_local int moveCounter = 0;
+    const bool isStart = e.pressure >= 0.99f;
+    const bool isEnd   = e.pressure <= 0.01f;
+
+    if (isStart)
+    {
+        currentStrokeId = ++globalStrokeId;
+        moveCounter = 0;
+    }
+    else if (currentStrokeId < 0)
+    {
+        // Assign an ID if a move arrives without an explicit start
+        currentStrokeId = ++globalStrokeId;
+    }
+
+    const bool coordsClamped = (clampedX != e.x) || (clampedY != e.y);
+
+    auto writeStrokeLog = [&](const char* phase){
+        std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+        if (logFile.is_open()) {
+            logFile << "PROCESS_STROKE: id=" << currentStrokeId
+                    << " phase=" << phase
+                    << " x=" << clampedX
+                    << " y=" << clampedY
+                    << " pressure=" << e.pressure
+                    << (coordsClamped ? " clamped=true" : "")
+                    << "\n";
+        }
+    };
+
+    if (isStart)
+    {
+        writeStrokeLog("start");
+    }
+    else if (isEnd)
+    {
+        writeStrokeLog("end");
+        currentStrokeId = -1;
+        moveCounter = 0;
+    }
+    else
+    {
+        // Log every 10th move to avoid flooding
+        if ((++moveCounter % 10) == 0)
+            writeStrokeLog("move");
     }
     
     // Update UI frame for stroke-to-audio bridge
@@ -1470,8 +1585,8 @@ void ARTEFACTAudioProcessor::processStrokeEvent(const StrokeEvent& e)
     // Convert StrokeEvent to PaintEvent and push to RT-safe queue
     PaintEvent paintEvent;
     // FIX: Coordinates are already 0-1 from PixelCanvas, no need to divide by 1000
-    paintEvent.nx = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.x));
-    paintEvent.ny = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.y));
+    paintEvent.nx = clampedX;
+    paintEvent.ny = clampedY;
     paintEvent.pressure = e.pressure;
     paintEvent.flags = kStrokeMove; // Default to stroke move
     paintEvent.color = e.colour.getARGB(); // Convert JUCE colour to ARGB

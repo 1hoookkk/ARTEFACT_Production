@@ -92,7 +92,7 @@ target_sources(SpectralCanvas PRIVATE
     Source/Core/TapeSpeed.cpp
     Source/Core/StereoWidth.cpp
     Source/Core/LFO.cpp
-    Source/Core/Audio/AudityVoiceModule.cpp
+    # Source/Core/Audio/AudityVoiceModule.cpp  # Temporarily disabled - not integrated yet
     
     # Professional Features
     Source/Core/ProfessionalMeteringSuite.h

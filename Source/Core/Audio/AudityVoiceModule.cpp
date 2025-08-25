@@ -132,15 +132,11 @@ void AudityVoiceModule::process(juce::AudioBuffer<float>& buffer, int numSamples
             // Process input sample
             float inputSample = channelData[sample] * inputGain + noise * noiseLevel;
             
-            // Update SSM2040 filter coefficients if needed
-            static float lastCutoff = 0.0f;
-            static float lastResonance = 0.0f;
-            if (std::abs(modulatedCutoff - lastCutoff) > 1.0f || 
-                std::abs(modulatedResonance - lastResonance) > 0.01f)
+            // Update SSM2040 filter coefficients if needed (RT-safe member variable comparison)
+            if (std::abs(modulatedCutoff - filter.currentCutoff) > 1.0f || 
+                std::abs(modulatedResonance - filter.currentResonance) > 0.01f)
             {
                 filter.updateCoefficients(modulatedCutoff, modulatedResonance);
-                lastCutoff = modulatedCutoff;
-                lastResonance = modulatedResonance;
             }
             
             // Process through SSM2040-inspired filter
@@ -267,10 +263,10 @@ void AudityVoiceModule::updateDrift()
 
 void AudityVoiceModule::updateBpmModulation()
 {
-    if (!isPlaying || hostBpm <= 0)
+    // Sync to quarter notes (1 beat) with division-by-zero protection
+    if (!isPlaying || hostBpm <= 0.0)
         return;
     
-    // Sync to quarter notes (1 beat)
     double beatsPerSecond = hostBpm / 60.0;
     double phaseIncrement = beatsPerSecond * juce::MathConstants<double>::twoPi / currentSampleRate;
     
