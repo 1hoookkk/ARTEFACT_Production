@@ -36,8 +36,8 @@
 #include "GUI/PaintControlPanel.h"
 #include "Skin/SpectralLookAndFeel.h"
 #include "Skin/LogoComponent.h"
-#include "../ui/Controls.h"
-#include "../ui/Canvas.h"
+#include "../UI/Controls.h"
+#include "../UI/Canvas.h"
 #include "../state/StrokeEvents.h"
 
 // Forward declarations
