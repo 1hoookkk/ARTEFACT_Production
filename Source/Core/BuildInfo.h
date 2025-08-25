@@ -7,5 +7,5 @@
 
 // Compile-time assertions to verify our build flags
 #ifndef SC_MVP_UI
-    #warning "SC_MVP_UI not defined - this might explain the missing changes!"
+    #pragma message("SC_MVP_UI not defined - this might explain the missing changes!")
 #endif

@@ -1,7 +1,9 @@
 #pragma once
 #include <JuceHeader.h>
-#include "ThemeAwareLookAndFeel.h"
+#include "ThemeAwareLookAndFeelStub.h"
 #include "PixelCanvasComponent.h"
+#include "WaveformThumbnailComponent.h"
+#include "PianoRollComponent.h"
 #include "LookAndFeelTokens.h"
 
 // Forward declarations
@@ -22,7 +24,8 @@ class SpectralSynthEngineStub;
  */
 class PluginEditorY2K : public juce::AudioProcessorEditor,
                         public juce::KeyListener,
-                        public juce::Timer
+                        public juce::Timer,
+                        public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     explicit PluginEditorY2K(ARTEFACTAudioProcessor& processor);
@@ -38,6 +41,9 @@ public:
     // Accessibility and safety
     void panicDisableAllEffects();
     void setReduceMotion(bool reduce);
+    
+    // Parameter listener
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
 
 private:
     // Core references
@@ -47,8 +53,11 @@ private:
     std::unique_ptr<ThemeAwareLookAndFeel> themeLookAndFeel_;
     scp::ThemeTokens currentTokens_;
     
-    // Main UI components
+    // Main UI components (Phase 2)
     std::unique_ptr<PixelCanvasComponent> pixelCanvas_;
+    std::unique_ptr<WaveformThumbnailComponent> waveformThumbnail_;
+    std::unique_ptr<PianoRollComponent> pianoRoll_;
+    std::unique_ptr<juce::TextButton> loadButton_;
     
     // Control panels (simplified for Y2K theme)
     std::unique_ptr<juce::Component> leftControlPanel_;
@@ -61,6 +70,7 @@ private:
     std::unique_ptr<juce::Slider> freqMinSlider_;
     std::unique_ptr<juce::Slider> freqMaxSlider_;
     std::unique_ptr<juce::ToggleButton> testToneButton_;
+    std::unique_ptr<juce::ToggleButton> bypassSecretSauceButton_;
     std::unique_ptr<juce::TextButton> clearButton_;
     std::unique_ptr<juce::ToggleButton> previewButton_;
     

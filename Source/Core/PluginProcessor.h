@@ -2,6 +2,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <future>
+#include <optional>
 #include "Core/Commands.h"
 #include "Core/CommandQueue.h"
 #include "Core/ForgeProcessor.h"
@@ -14,6 +16,8 @@
 #include "Core/PaintQueue.h"
 #include "Core/EMUFilter.h"
 #include "Core/TubeStage.h"
+#include "Core/LFO.h"
+#include "ParamIDs.h"
 
 class ARTEFACTAudioProcessor : public juce::AudioProcessor,
     public juce::AudioProcessorValueTreeState::Listener
@@ -49,11 +53,14 @@ public:
 
     void parameterChanged(const juce::String&, float) override;
     
+    // Async sample loading for Phase 2 UI
+    void enqueueSampleLoad(const juce::File& file);
+    
     // Accessors for GUI
     ForgeProcessor& getForgeProcessor() { return forgeProcessor; }
     PaintEngine& getPaintEngine() { return paintEngine; }
     SampleMaskingEngine& getSampleMaskingEngine() { return sampleMaskingEngine; }
-    SpectralSynthEngine& getSpectralSynthEngine() { return spectralSynthEngine; }
+    SpectralSynthEngine& getSpectralSynthEngine() { return SpectralSynthEngine::instance(); }
     SpectralSynthEngineStub* getSpectralSynthEngineStub() { return &spectralSynthEngineStub; }
     AudioRecorder& getAudioRecorder() { return audioRecorder; }
     
@@ -91,7 +98,8 @@ public:
     
     // Legacy shims for existing calls
     void processStrokeEvent(float x, float y, float pressure, juce::Colour color) {
-        StrokeEvent e; e.x=(int)x; e.y=(int)y; e.pressure=pressure; e.colour=color; 
+        // FIX: Don't cast float coords to int - preserve precision for 0-1 range
+        StrokeEvent e; e.x=x; e.y=y; e.pressure=pressure; e.colour=color; 
         processStrokeEvent(e);
     }
     
@@ -112,7 +120,7 @@ private:
     ForgeProcessor  forgeProcessor;
     PaintEngine paintEngine;
     SampleMaskingEngine sampleMaskingEngine;
-    SpectralSynthEngine spectralSynthEngine;
+    // SpectralSynthEngine spectralSynthEngine; // Using singleton instance instead
     SpectralSynthEngineStub spectralSynthEngineStub;
     ParameterBridge parameterBridge;
     AudioRecorder audioRecorder;
@@ -120,15 +128,24 @@ private:
     // Always-on character chain: EMU → Spectral → Tube
     EMUFilter emuFilter;
     TubeStage tubeStage;
+    
+    // Phase 2 feature: BPM-synced modulation
+    LFO movementLFO;
 
     enum class ProcessingMode { Forge = 0, Canvas, Hybrid };
     ProcessingMode currentMode = ProcessingMode::Canvas;
+    
+    // Dev/debug flags
+    std::atomic<bool> bypassSecretSauce{false};
 
     // Thread-safe command queue
     CommandQueue<512> commandQueue;  // Increased size for better performance
     
     // Paint event queue for real-time paint-to-audio
     SpectralPaintQueue paintQueue;
+    
+    // Async sample loading management
+    std::optional<std::future<bool>> sampleLoadFuture;
     
     // Command processing methods
     void processCommands();

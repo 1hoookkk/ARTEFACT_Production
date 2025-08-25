@@ -329,7 +329,7 @@ void EMUDualFilter::prepareToPlay(double sampleRate)
     filter2.prepareToPlay(sampleRate);
 }
 
-void EMUDualFilter::processBlock(juce::AudioSampleBuffer& buffer)
+void EMUDualFilter::processBlock(juce::AudioBuffer<float>& buffer)
 {
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
@@ -426,7 +426,7 @@ void EMUFilter::prepareToPlay(double sampleRate, int samplesPerBlock)
     dualFilter.prepareToPlay(sampleRate);
 }
 
-void EMUFilter::processBlock(juce::AudioSampleBuffer& buffer)
+void EMUFilter::processBlock(juce::AudioBuffer<float>& buffer)
 {
     auto startTime = juce::Time::getHighResolutionTicks();
     

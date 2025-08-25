@@ -1,311 +1,173 @@
-# CLAUDE.md
+CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides authoritative guidance to Claude Code when working with the SpectralCanvas Pro repository. All user prompts must operate within these boundaries.
 
-## Project Overview
-SpectralCanvas Pro is an advanced JUCE-based audio plugin for spectral synthesis and canvas-based sound design. Available as VST3 and Standalone applications, it provides visual manipulation of audio spectra through an interactive canvas interface.
+Project Overview
 
-### Repository Structure
-- `Source/Core/` → Audio processing engine, DSP components, RT-safe systems
-- `Source/GUI/` → User interface, editor components, visual feedback
-- `Source/Spectral/` → STFT processing, spectral analysis components
-- `Source/Tests/` → Unit tests integrated with main build
-- `Tests/` → Standalone integration tests and validation
-- `docs/` → Documentation, design specs, session notes
-- `External/JUCE/` → JUCE framework (managed externally)
-- `build/` → Generated build artifacts and binaries
+SpectralCanvas Pro is a JUCE-based audio plugin and standalone application for spectral synthesis and canvas-driven sound design.
 
-### Core Architecture
-- **Paint→Audio Pipeline**: Lock-free SPSC queue (`PaintQueue.h`) connects UI thread gestures to audio thread synthesis
-- **RT-Safe Audio Processing**: `SpectralSynthEngine` performs synthesis without locks/allocations on audio thread
-- **Parameter Management**: APVTS with atomic parameter snapshots for RT-safety
-- **Emergency Systems**: Test tone injection and debugging infrastructure for development
-- **Filter Chain**: EMU-style analog filter emulation with tube stage processing
+Phase 1 (MVP): Core Paint→Audio pipeline, real-time synthesis
 
-## Commands
+Phase 2 (Current): UI upgrade per ui-phase2-scoped-spec.md ("Minimal but Musical")
 
-### Build System
-```bash
-# Standard build with tests (recommended)
+Phase 3+: Advanced 3D features (future roadmap, not current scope)
+
+Repository Structure
+
+Source/Core/ → DSP engine, RT-safe systems
+
+Source/GUI/ → Editor + Phase 2 UI components
+
+Source/Spectral/ → STFT, HPSS, spectral analysis
+
+Source/Tests/ → Unit tests integrated with main build
+
+Tests/ → Standalone integration tests
+
+docs/ → Specs, design notes (ui-phase2-scoped-spec.md)
+
+External/JUCE/ → JUCE framework (external)
+
+build/ → Build artifacts (read-only)
+
+Core Architecture
+
+Paint→Audio Pipeline: Lock-free SPSC queue from UI to audio thread
+
+RT-Safe Audio: No locks/allocations on audio thread
+
+Parameter Management: APVTS with atomic snapshots
+
+Emergency Systems: Test tone injection
+
+Analog Filter Chain: Tube + EMU-style filtering
+
+Development Guidelines
+
+Language & Style:
+
+C++17, JUCE conventions
+
+RAII and smart pointers; no raw new/delete
+
+Thread-safe: no allocations/locks on audio thread
+
+Doxygen-style headers for public classes/functions
+
+Testing:
+
+All DSP changes require unit + RT-safety tests (Source/Tests/)
+
+UI behavior validated with integration tests (Tests/)
+
+Docs:
+
+Major features require update to /docs/
+
+UI changes must sync with ui-phase2-scoped-spec.md
+
+Commands
+Build
+# Build with tests
 cmake -S . -B build -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build --config RelWithDebInfo --target ALL_BUILD
 
-# Release build for distribution
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-
-# Debug build for development
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
-cmake --build build --config Debug
-```
-
-### Testing
-```bash
-# Run all tests (use RelWithDebInfo for best debugging + performance)
+Test
+# Run all tests
 ctest --test-dir build -C RelWithDebInfo --output-on-failure
-
-# Run specific test
-ctest --test-dir build -C RelWithDebInfo -R "TestPaintProducesAudio" --output-on-failure
-
-# List available tests
-ctest --test-dir build -N -C RelWithDebInfo
-
-# Run RT-safety focused tests
+# Run RT-safety subset
 ctest --test-dir build -C RelWithDebInfo -R "RT|Paint|Audio" --output-on-failure
-```
 
-### Development Workflow
-```bash
-# Emergency test mode toggle (in PluginEditor)
-Press 'T' key → toggles emergency test tone for audio debugging
-
-# TDD continuous testing
+Dev Workflow
+# Emergency test tone toggle (Editor: press 'T')
+# Continuous TDD
 tdd-guard.bat
-
 # Quick build validation
 tools/test/phase7-quick-validation.bat
-```
 
-## File Boundaries
+File Boundaries
 
-### Editable Files
-- `Source/**` → All source code and headers
-- `Tests/**` → Test files and validation scripts
-- `docs/**` → Documentation and specifications
-- `CMakeLists.txt` → Build configuration
+Editable: Source/**, Tests/**, docs/**, CMakeLists.txt
 
-### Protected Files
-- `CLAUDE.md` → This workflow document (edit via unified diff only)
-- `.claude/*.json` → Agent configuration and settings
-- `.git/**` → Version control metadata
+Protected: CLAUDE.md, .claude/*.json, .git/**
 
-### Read-Only Files
-- `External/JUCE/**` → JUCE framework (managed externally)
-- `build/**` → Generated build artifacts
-- `**/obj/**` → Compiler intermediates
+Read-Only: External/JUCE/**, build/**, **/obj/**
 
-## Workflow
+Workflow: RECON → SPEC → PATCH → VERIFY
 
-### RECON → SPEC → PATCH → VERIFY Cycle
-1. **RECON**: Delegate to reader-agent for file analysis and evidence gathering
-2. **SPEC**: Main agent confirms targets and requirements with user
-3. **PATCH**: Delegate to maker-agent for unified diffs and build commands
-4. **VERIFY**: User applies changes and validates with build/test commands
+RECON: Reader-agent gathers evidence
 
-### Agent Delegation
-- **reader-agent** (haiku) → Fast recon, file searches, evidence gathering
-- **maker-agent** (opus/sonnet) → Code generation, patches, build commands
+SPEC: Main agent confirms requirements
 
-### Conflict Resolution Priority
-1. **User directives** (highest priority)
-2. **CLAUDE.md** workflow rules
-3. **settings.local.json** configuration
-4. **Default behavior** (lowest priority)
+PATCH: Maker-agent applies unified diffs
 
-## Permissions Strategy
+VERIFY: User builds/tests to confirm
 
-### Default Mode
-Plan Mode is default per `settings.local.json` configuration.
+Agent Delegation
 
-### Auto-Accept Commands
-- `cmake -B build*` → Build configuration
-- `cmake --build build*` → Compilation
-- `ctest --test-dir build*` → Test execution
-- `tdd-guard.bat` → Continuous testing
+reader-agent (haiku): file reads, searches, evidence gathering
 
-### Notification Wrappers (Auto-Accept)
-- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-and-notify.ps1` → SpectralCanvas Pro build with notifications
-- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test-and-notify.ps1` → RT-safety test execution with notifications
-- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/run-and-notify.ps1` → Generic task wrapper with logging and notifications
-- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/notify.ps1` → Desktop toast notifications (BurntToast/SnoreToast/console)
+maker-agent (opus/sonnet): code generation, patches, build commands
 
-### Notification Integration
-Environment variables for webhook integration:
-- `SPECTRALCANVAS_SLACK_WEBHOOK` → Slack webhook URL for build/test notifications
-- Logs stored in `./logs/` directory with timestamped files
-- RT-Safety context automatically detected for audio thread operations
-- Desktop notifications support BurntToast → SnoreToast → console fallback
+Always parallelize when safe (multi-agent strategy)
 
-### Require User Approval
-- File edits (Source/, Tests/, docs/)
-- Git operations (commit, push, merge)
-- External dependency changes
-- Configuration modifications
+Permissions & Safety Modes
 
-## Safety Rails
+Default: Plan Mode ON (Shift+Tab twice) for analysis before edits
 
-### Code Changes
-- **Unified diffs only** for all patches
-- **No direct file writes** without explicit approval
-- **Minimal scoped changes** targeting specific issues
-- **Build validation required** before considering changes complete
+Auto-Accept: Allowed for Edit(*) and Grep(*) during Phase 2 UI iteration
 
-### Version Control
-- **No commits without user approval**
-- **Branch protection** for main/master branches
-- **Rollback support** via git stash/branch mechanisms
-- **Clean working directory** verification before major changes
+Forbidden: --dangerously-skip-permissions (never use)
 
-## Best-of-N Pattern
+Conflict Resolution
 
-For ambiguous requirements or implementation choices, present structured options:
+User directives (highest priority)
 
-### Option A: Conservative/Safe
-- Minimal changes with maximum compatibility
-- Established patterns and proven solutions
-- Lower risk, incremental improvements
+CLAUDE.md rules
 
-### Option B: Aggressive/Optimized
-- More comprehensive changes for better performance
-- Modern patterns and advanced techniques
-- Higher impact but increased complexity
+Default safe practices
 
-## Critical RT-Safety Rules
+Phase 2 UI Rules (Scoped Spec)
 
-SpectralCanvas Pro is a real-time audio plugin with strict performance requirements:
+When editing Source/GUI/**, changes must follow docs/ui-phase2-scoped-spec.md:
 
-### Audio Thread Constraints
-- **Zero locks** in `processBlock()` chain - use atomic operations only
-- **Zero allocations** in audio processing - preallocate in `prepareToPlay()`
-- **Zero logging/printing** on audio thread - use lock-free trace buffers instead
-- **SPSC queues only** - Single Producer (UI) Single Consumer (Audio) pattern
-- **Atomic parameter access** - `std::memory_order_relaxed` for performance params
+Canvas: Flat 2D spectrogram, additive glow strokes, cyan/orange HPSS system
 
-### Paint→Audio Pipeline Safety
-```cpp
-// UI Thread (Producer)
-paintQueue.forcePush(gesture);  // Lock-free push
+Overlays: Note grid, piano roll, scale highlighting, ghost snapping
 
-// Audio Thread (Consumer) 
-while (paintQueue.pop(gesture)) {
-    engine->setTargets(freq, amp);  // Atomic stores only
-}
-engine->processBlock(buffer);  // RT-safe synthesis
-```
+Feedback: Overtone guides, chord recognition
 
-### Parameter Management
-- **APVTS snapshots** taken once per block (RT-safe)
-- **Atomic variables** for real-time modulation
-- **Emergency fallbacks** for debugging (test tone injection)
+Export Pod: Real-time waveform preview + drag-to-DAW export
 
-## AI Collaboration Framework
+Notifications & Hooks (Pushover)
 
-### Integration Protocol v2.0 - Big-Prompt Playbook
+## Tooling
+- Primary notifier: PowerShell script at .claude/hooks/pushover-notifier.ps1
+- Call pattern:
+  powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 "<message>" -Title "<title>" -Priority "<0-2>"
+- Configuration: C:\Users\hooki\.claude\pushover.json with Pushover API credentials
+- Never call curl directly; always use the notifier script.
 
-SpectralCanvas Pro uses a simplified, evidence-based AI collaboration system focused on **big prompts with small patches**. This eliminates micro-management while ensuring quality and RT-safety.
+## Permissions
+- Allowed: Bash(powershell.exe -ExecutionPolicy Bypass -File .claude/hooks/pushover-notifier.ps1 *)
+- Disallowed: arbitrary network calls for notifications.
 
-### Core Principles
-- **Truth = git + ctest** - No narrative without evidence
-- **SPEC ↔ PATCH separation** - Planning and patching are different roles
-- **Checksum gate** - Every patch directive carries SHA256 verification
-- **RT-audio safety** - No locks/allocs/logging on audio thread; APVTS atomic
+## When to notify (MANDATORY - send for ALL events)
+- After successful build: "📦 Build complete" (+ target name, duration if available)
+- After tests pass: "✅ Tests passed" (+ duration, changed file count)  
+- After multi-file edit sessions > 3 files: "🎉 Task completed" (+ file count)
+- After PR create/merge: "🚀 PR <id> <action>"
+- Before launching applications: "🚀 Launching <app-name>"
+- After application launches successfully: "✅ <app-name> started"
+- On any failure: "❌ <event> failed: <one-line reason>"
+- When completing any significant task: "✅ <task-name> completed"
+- **ALWAYS notify immediately after any build, test, or launch command completes**
 
-### Phase Model (Keep It Simple)
-1. **RECON (Reader)**: Confirm file reality + test discovery; produce FROZEN evidence with checksum
-2. **SPEC (SME/Advisor)**: One clear outcome, minimal surface area, constraints first  
-3. **PATCH (Maker)**: Diff-only. No narration. Print build/test commands
-4. **VERIFY (You)**: Build, run ctest, decide pass/fail and next step
+## CI/CD (optional)
+- If CI is detected, add a final step that runs the notifier with job status.
 
-### Sub-Agent Registry
+## Plan Mode for first-time wiring
+- For initial setup changes (hooks, CI edits), use Plan Mode and show diffs before executing.
 
-| Agent | Purpose | When to Use | Output |
-|-------|---------|-------------|---------|
-| **reader-agent** | Evidence gathering, FROZEN blocks with SHA256 | Always - front-loads truth | File bytes + grep hits + checksum |
-| **maker-agent** | Surgical diffs with checksum verification | Always - enforces small patches | ==DIFF== + ==BUILD== + ==TEST== |
-| **analyzer-agent** | Architecture analysis, integration mapping | Complex features (DSP, threading) | YAML analysis with file:line evidence |
-| **validator-agent** | Performance and regression validation | After patches requiring validation | Pass/fail metrics, performance deltas |
-| **rt-linter** | RT-safety violation detection | Every audio path change | Lint report with line-by-line analysis |
-| **dsp-oracle** | DSP math sanity checking | New DSP features, frequency mapping | Correctness report + golden test spec |
-| **gui-robot** | UI interaction test generation | Canvas features, parameter changes | Test code for UI-to-audio validation |
-| **preset-curator** | State management validation | Preset/state changes | Round-trip integrity tests |
-
-### Big Prompt Templates
-
-#### Universal AI Orchestrator (Copy-Paste Ready)
-```
-PLAN MODE ON. We will ship a RED→GREEN slice for <FEATURE> using big-prompt orchestration and small patches.
-
-CONTEXT
-- Truth = repo + ctest. Follow my TL;DR checksum and file boundaries strictly.
-- RT-safety: no locks/allocs/logging on audio thread; APVTS atomic.
-
-TASKS
-READER → Return FROZEN block with SHA256, FILES, ASSERTIONS, DoD.
-SPEC (you) → Propose the tiniest change that flips RED→GREEN; list exact files (≤3).
-MAKER (after approval) → Echo SHA256, then unified diffs + exact build/test commands.
-
-OUTPUT NOW
-- RECON summary → SPEC → PATCH PLAN → Stop and await approval.
-```
-
-#### TL;DR Checksum Format
-```
-## TL;DR Checksum
-TASK: <one-sentence outcome>
-FILES (locked): <ordered list>
-ENTITIES: <symbols/functions/ParamIDs>
-CONSTRAINTS: RT-audio safety + scope limits
-ASSERTIONS (test must prove): <bullet list>
-DoD: <bullet list ending in exit code 0>
-SHA256: <Reader-provided hex over FILES+ASSERTIONS+DoD>
-```
-
-### Quality Gates
-
-#### Checksum Gate (Mandatory)
-- Reader produces SHA256 over FILES+ASSERTIONS+DoD
-- Architect copies exact hash into TL;DR
-- Maker echoes hash before generating diffs
-- Mismatch = immediate abort
-
-#### RT-Safety Gate (Audio Changes)
-- rt-linter scans every diff touching audio paths  
-- Zero tolerance for locks/allocs/logging in processBlock
-- Atomic parameter access patterns validated
-- Performance regression monitoring
-
-### Workflow Patterns
-
-#### Simple Changes (≤3 files)
-1. Use reader-agent for evidence
-2. Create TL;DR with checksum  
-3. Use maker-agent for surgical patch
-4. Apply rt-linter if audio-related
-
-#### Complex Features (>3 files, multiple systems)  
-1. Use analyzer-agent for architecture preflight
-2. Create comprehensive TL;DR with checksum
-3. Use specialized agents (dsp-oracle, gui-robot) as needed
-4. Full validation chain before integration
-
-### Success Metrics
-- **Evidence-Based**: All changes backed by reader-agent file evidence
-- **Minimal Patches**: Surgical diffs targeting specific outcomes
-- **Quality Gates**: RT-safety and performance preserved
-- **Checksum Integrity**: Zero spec-drift between analysis and implementation
-
-## Session Notes & Memory
-
-### Session Tracking
-Create session notes in `/docs/session-notes/YYYY-MM-DD.md` format:
-```
-# Session Notes - 2025-08-20
-
-## Goals
-- [Primary objectives for this session]
-
-## Decisions Made
-- [Key architectural or implementation decisions]
-
-## Blockers Encountered
-- [Issues that prevented progress]
-
-## Next Steps
-- [Action items for future sessions]
-```
-
-### Active Work Tracking
-Link to `/docs/tasks/todo.md` for current sprint items and ongoing development tasks.
-- Simple Loop v5.0 is mandatory: RECON → SPEC → PATCH (diff-only) → VERIFY (ctest)
-- # RULE: Always start in Plan Mode (read-only). Present SPEC + PATCH; no Bash until I say "VERIFY"
-- # RULE: Test-first gatekeeper. A slice is DONE only when `ctest` reports 100% pass from a clean build.
+No deviation from spec without explicit user approval.
+- @CLAUDE.md @.claude\CLAUDE.md @.claude\hooks\pushover-notifier.ps1

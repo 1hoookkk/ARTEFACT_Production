@@ -13,6 +13,18 @@
 #include "RealtimeMemoryManager.h"
 #include "PerformanceProfiler.h"
 #include <random>
+#include <cmath>
+
+// Helper function to convert FFT size to order (safely handles non-power-of-2)
+static int fftOrderFromSize(int size)
+{
+    if (!juce::isPowerOfTwo(size))
+        size = juce::nextPowerOfTwo(size); // safety
+    
+    int order = 0;
+    while ((1 << order) < size) ++order;
+    return order;
+}
 #include <algorithm>
 #include <cmath>
 
@@ -25,8 +37,9 @@ CDPSpectralEngine::CDPSpectralEngine()
 {
     // Initialize FFT with default size
     int fftSize = currentFFTSize.load();
-    forwardFFT = std::make_unique<juce::dsp::FFT>(std::log2(fftSize));
-    inverseFFT = std::make_unique<juce::dsp::FFT>(std::log2(fftSize));
+    const int order = fftOrderFromSize(fftSize);
+    forwardFFT = std::make_unique<juce::dsp::FFT>(order);
+    inverseFFT = std::make_unique<juce::dsp::FFT>(order);
     windowFunction = std::make_unique<juce::dsp::WindowingFunction<float>>(fftSize, currentWindowType);
     
     // Initialize phase vocoder
@@ -108,8 +121,9 @@ void CDPSpectralEngine::prepareToPlay(double sampleRate, int samplesPerBlock, in
     int fftSize = currentFFTSize.load();
     if (!forwardFFT || forwardFFT->getSize() != fftSize)
     {
-        forwardFFT = std::make_unique<juce::dsp::FFT>(std::log2(fftSize));
-        inverseFFT = std::make_unique<juce::dsp::FFT>(std::log2(fftSize));
+        const int order = fftOrderFromSize(fftSize);
+        forwardFFT = std::make_unique<juce::dsp::FFT>(order);
+        inverseFFT = std::make_unique<juce::dsp::FFT>(order);
         windowFunction = std::make_unique<juce::dsp::WindowingFunction<float>>(fftSize, currentWindowType);
         
         // Resize buffers

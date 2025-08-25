@@ -55,7 +55,7 @@ public:
                 s += osc[i].processSample(0.0f) * (1.0f / (i + 1)); // simple 1/h falloff
 
             const float envVal = env.getNextSample();
-            const float out = s * baseAmp * envVal;
+            const float out = s * baseAmp * envVal * 10.0f; // Boost output volume for audibility
 
             left[n]  += out * panL;
             if (right) right[n] += out * panR;

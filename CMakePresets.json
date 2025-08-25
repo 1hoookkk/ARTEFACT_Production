@@ -1,39 +1,68 @@
 {
-    "version": 3,
-    "configurePresets": [
-        {
-            "name": "windows-debug",
-            "displayName": "Windows Debug",
-            "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
-            "binaryDir": "${sourceDir}/build",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            }
-        },
-        {
-            "name": "windows-release",
-            "displayName": "Windows Release",
-            "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
-            "binaryDir": "${sourceDir}/build",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            }
-        }
-    ],
-    "buildPresets": [
-        {
-            "name": "debug-standalone",
-            "displayName": "Debug Standalone",
-            "configurePreset": "windows-debug",
-            "targets": ["SpectralCanvas_Standalone"]
-        },
-        {
-            "name": "debug-vst3",
-            "displayName": "Debug VST3",
-            "configurePreset": "windows-debug", 
-            "targets": ["SpectralCanvas_VST3"]
-        }
-    ]
+  "version": 4,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "ninja-dev",
+      "displayName": "Ninja (Multi-Config) • Dev",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build-ninja",
+      "architecture": { "strategy": "set", "value": "x64" },
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "23",
+        "BUILD_TESTS": "ON",
+        "BUILD_TOOLS": "OFF"
+      }
+    },
+    {
+      "name": "msvc-ide",
+      "displayName": "Visual Studio 2022 • IDE",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-msvc",
+      "architecture": { "strategy": "set", "value": "x64" },
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "23",
+        "BUILD_TESTS": "ON",
+        "BUILD_TOOLS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "ninja-relwithdebinfo",
+      "configurePreset": "ninja-dev",
+      "configuration": "RelWithDebInfo",
+      "verbose": true,
+      "jobs": 0,
+      "nativeToolOptions": ["-d", "stats"]
+    },
+    {
+      "name": "msvc-relwithdebinfo",
+      "configurePreset": "msvc-ide",
+      "configuration": "RelWithDebInfo",
+      "verbose": true,
+      "nativeToolOptions": ["/m", "/v:diag", "/bl:msvc.binlog"]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "ninja-tests",
+      "configurePreset": "ninja-dev",
+      "configuration": "RelWithDebInfo",
+      "outputOnFailure": true,
+      "verbosity": "verbose"
+    },
+    {
+      "name": "msvc-tests",
+      "configurePreset": "msvc-ide",
+      "configuration": "RelWithDebInfo",
+      "outputOnFailure": true,
+      "verbosity": "verbose"
+    }
+  ]
 }
+

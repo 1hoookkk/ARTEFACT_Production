@@ -3,7 +3,8 @@
 #include "GUI/PluginEditor.h"
 #include "GUI/PluginEditorMVP.h"
 #include "GUI/PluginEditorVector.h"
-#include "GUI/PluginEditorY2K.h"
+#include "GUI/PluginEditorMVP.h"
+#include <fstream>
 
 //==============================================================================
 // Constructor and Destructor
@@ -24,6 +25,7 @@ ARTEFACTAudioProcessor::ARTEFACTAudioProcessor()
     apvts.addParameterListener("masterGain", this);
     apvts.addParameterListener("paintActive", this);
     apvts.addParameterListener("processingMode", this);
+    apvts.addParameterListener("bypassSecretSauce", this);
     
     // Paint engine section
     apvts.addParameterListener("brushSize", this);
@@ -68,6 +70,26 @@ ARTEFACTAudioProcessor::ARTEFACTAudioProcessor()
     apvts.addParameterListener("featherFreq", this);
     apvts.addParameterListener("threshold", this);
     apvts.addParameterListener("protectHarmonics", this);
+    
+    // Phase 2 feature parameter listeners
+    apvts.addParameterListener("characterBlend", this);
+    apvts.addParameterListener("percHarmBalance", this);
+    apvts.addParameterListener("movementDepth", this);
+    apvts.addParameterListener("movementRate", this);
+    apvts.addParameterListener("movementSync", this);
+
+    // Canvas UI (Phase 2) parameter listeners
+    apvts.addParameterListener("gridEnabled", this);
+    apvts.addParameterListener("scaleEnabled", this);
+    apvts.addParameterListener("overtoneGuidesEnabled", this);
+    apvts.addParameterListener("snapToleranceCents", this);
+
+    // Audity Soul parameter listeners
+    apvts.addParameterListener("emu_cutoff", this);
+    apvts.addParameterListener("emu_resonance", this);
+    apvts.addParameterListener("emu_bpm_sync", this);
+    apvts.addParameterListener("emu_drift", this);
+    apvts.addParameterListener("noise_type", this);
 }
 
 ARTEFACTAudioProcessor::~ARTEFACTAudioProcessor()
@@ -102,6 +124,9 @@ void ARTEFACTAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     // Always-on character chain: EMU → Spectral → Tube
     emuFilter.prepareToPlay(sampleRate, samplesPerBlock);
     tubeStage.prepare(sampleRate, samplesPerBlock);
+    
+    // Phase 2 feature: BPM-synced modulation
+    movementLFO.prepareToPlay(sampleRate);
     
     // Configure EMU filter for "pre-sweetening" (trims >14kHz fizz, adds signature mid-bite)
     emuFilter.setCutoff(0.7f);        // ~3.5kHz cutoff for signature EMU character  
@@ -161,6 +186,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARTEFACTAudioProcessor::crea
     parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
         "processingMode", "Processing Mode", 
         juce::StringArray{"Forge", "Canvas", "Hybrid"}, 1));
+    
+    // DEBUG/DEV SECTION
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "bypassSecretSauce", "Bypass Secret Sauce", false));
     
     //==============================================================================
     // PAINT ENGINE SECTION (8 parameters)
@@ -335,6 +364,87 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARTEFACTAudioProcessor::crea
     parameters.push_back(std::make_unique<juce::AudioParameterBool>(
         "protectHarmonics", "Protect Harmonics", true));
     
+    //==============================================================================
+    // PHASE 2 FEATURES SECTION
+    
+    // Secret Sauce parallel blend (locked minimum for demo)
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "characterBlend", "Character Blend", 
+        juce::NormalisableRange<float>(0.05f, 1.0f, 0.01f), 0.5f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value * 100)) + "%"; }));
+    
+    // Perc/Harm balance for HPSS visual feedback
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "percHarmBalance", "Perc/Harm Balance", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.5f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { 
+            if (value < 0.33f) return "Percussive";
+            if (value > 0.67f) return "Harmonic";
+            return "Balanced";
+        }));
+    
+    // Movement knob (BPM-synced filter modulation)
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "movementDepth", "Movement Depth", 
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 0.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 1) + "%"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "movementRate", "Movement Rate", 
+        juce::StringArray{"1/16", "1/8", "1/4", "1/2", "1/1", "2/1", "4/1"}, 2)); // Default to 1/4
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "movementSync", "Movement BPM Sync", true));
+
+    //==============================================================================
+    // CANVAS UI (PHASE 2A) SECTION
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "gridEnabled", "Grid Enabled", true));
+
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "scaleEnabled", "Scale Lanes Enabled", true));
+
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "overtoneGuidesEnabled", "Overtone Guides Enabled", false));
+
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "snapToleranceCents", "Snap Tolerance (cents)",
+        juce::NormalisableRange<float>(1.0f, 100.0f, 1.0f), 25.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float v, int){ return juce::String((int)v) + " cents"; }));
+
+    //==============================================================================
+    // AUDITY SOUL SECTION (5 parameters)
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "emu_cutoff", "EMU Cutoff", 
+        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 1200.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value)) + " Hz"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "emu_resonance", "EMU Resonance", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.65f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 2); }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "emu_bpm_sync", "EMU BPM Sync", false));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "emu_drift", "EMU Drift", 
+        juce::NormalisableRange<float>(0.0f, 0.05f, 0.001f), 0.02f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value * 100.0f, 1) + "%"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "noise_type", "Noise Type", 
+        juce::StringArray{"White", "Pink", "Mauve"}, 1));
+    
     return { parameters.begin(), parameters.end() };
 }
 
@@ -357,6 +467,11 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
         bool shouldBeActive = (currentMode == ProcessingMode::Canvas || 
                               currentMode == ProcessingMode::Hybrid);
         paintEngine.setActive(shouldBeActive);
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "bypassSecretSauce")
+    {
+        bypassSecretSauce.store(newValue > 0.5f);
         // RT-safe: No logging from parameter listeners
     }
     
@@ -412,7 +527,7 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == "oscillatorCount")
     {
         int count = static_cast<int>(newValue);
-        // spectralSynthEngine.setOscillatorCount(count); // To be implemented
+        SpectralSynthEngine::instance().setNumPartials(count);
         // RT-safe: No logging from parameter listeners
     }
     else if (parameterID == "spectralMode")
@@ -444,12 +559,8 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == "topNBands")
     {
         int bandCount = static_cast<int>(newValue);
-        SpectralSynthEngine::instance().setTopNBands(bandCount);
-<<<<<<< HEAD
-        DBG("Top-N bands changed to: " << bandCount);
-=======
+        // SpectralSynthEngine::instance().setTopNBands(bandCount); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     
     //==============================================================================
@@ -521,58 +632,79 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     
     else if (parameterID == "maskBlend")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue);
-<<<<<<< HEAD
-        DBG("Mask blend changed to: " << (newValue * 100.0f) << "%");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "maskStrength")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue);
-<<<<<<< HEAD
-        DBG("Mask strength changed to: " << newValue);
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherTime")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue);
-<<<<<<< HEAD
-        DBG("Feather time changed to: " << (newValue * 1000.0f) << "ms");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherFreq")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue);
-<<<<<<< HEAD
-        DBG("Feather frequency changed to: " << newValue << "Hz");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "threshold")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue);
-<<<<<<< HEAD
-        DBG("Mask threshold changed to: " << newValue << "dB");
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "protectHarmonics")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f);
-<<<<<<< HEAD
-        DBG("Protect harmonics changed to: " << (newValue > 0.5f ? "ON" : "OFF"));
-=======
+        // SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f); // API not yet implemented
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
+    
+    //==============================================================================
+    // PHASE 2 FEATURES SECTION
+    
+    else if (parameterID == "characterBlend")
+    {
+        // RT-safe: Store blend amount for equal-power crossfade in processBlock
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "percHarmBalance")
+    {
+        // RT-safe: Store balance for HPSS visual feedback and processing
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "movementDepth")
+    {
+        movementLFO.setDepth(newValue / 100.0f); // Convert percentage to 0-1
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "movementRate")
+    {
+        int rate = static_cast<int>(newValue);
+        movementLFO.setRate(static_cast<LFO::SyncRate>(rate));
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "movementSync")
+    {
+        movementLFO.setBPMSync(newValue > 0.5f);
+        // RT-safe: No logging from parameter listeners
+    }
+}
+
+//==============================================================================
+// Async Sample Loading (Phase 2 UI Integration)
+
+void ARTEFACTAudioProcessor::enqueueSampleLoad(const juce::File& file)
+{
+    // Launch async job to run loader off the audio thread.
+    // Using std::future/std::async is fine under C++23 with JUCE8.
+    std::future<bool> fut = std::async(std::launch::async, [this, file]() -> bool
+    {
+        return this->sampleMaskingEngine.loadSampleFromFile(file);
+    });
+
+    sampleLoadFuture = std::move(fut);
 }
 
 //==============================================================================
@@ -581,7 +713,7 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
 juce::AudioProcessorEditor* ARTEFACTAudioProcessor::createEditor()
 {
     // Use the polished Y2K theme as the default editor
-    return new PluginEditorY2K(*this);
+    return new PluginEditorMVP(*this, apvts);
 }
 
 //==============================================================================
@@ -688,7 +820,7 @@ void ARTEFACTAudioProcessor::processForgeCommand(const Command& cmd)
             forgeProcessor.loadSampleIntoSlot(cmd.intParam, sampleFile);
             
             // AUDIO FIX: Switch to Forge mode for sample playback
-            currentMode = ProcessingMode::Forge;
+            // currentMode = ProcessingMode::Forge; // DISABLED: Keep Canvas mode for paint-to-audio
             // RT-safe: No logging from parameter listeners
         }
         break;
@@ -830,44 +962,31 @@ void ARTEFACTAudioProcessor::processPaintCommand(const Command& cmd)
         // Send to both PaintEngine and SpectralSynthEngine for MetaSynth functionality
         paintEngine.beginStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure, cmd.color);
         
-        // Create PaintData for SpectralSynthEngine with MetaSynth mapping
+        // Send to SpectralSynthEngine via RT-safe queue
         {
-            SpectralSynthEngine::PaintData paintData;
-            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);  // Normalize assuming 8-second canvas
-            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f); // Normalize assuming 100-unit frequency range
-            paintData.pressure = cmd.pressure;
-            paintData.velocity = 0.5f;  // Default velocity
-            paintData.color = cmd.color;
-            paintData.timestamp = juce::Time::getMillisecondCounter();
+            PaintEvent paintEvent;
+            paintEvent.nx = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
+            paintEvent.ny = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
+            paintEvent.pressure = cmd.pressure;
+            paintEvent.flags = kStrokeStart;
+            paintEvent.color = cmd.color.getARGB();
             
-            // Calculate derived parameters (this will be done by the engine)
-            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
-            paintData.amplitude = cmd.pressure;
-            paintData.panPosition = 0.0f;  // Will be calculated from color
-            paintData.synthMode = 0;
-            
-            SpectralSynthEngine::instance().processPaintStroke(paintData);
+            SpectralSynthEngine::instance().pushGestureRT(paintEvent);
         }
         break;
     case PaintCommandID::UpdateStroke:
         paintEngine.updateStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure);
         
-        // Also send to SpectralSynthEngine for continuous MetaSynth processing
+        // Also send to SpectralSynthEngine via RT-safe queue
         {
-            SpectralSynthEngine::PaintData paintData;
-            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
-            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
-            paintData.pressure = cmd.pressure;
-            paintData.velocity = 0.7f;  // Higher velocity for updates
-            paintData.color = cmd.color;
-            paintData.timestamp = juce::Time::getMillisecondCounter();
+            PaintEvent paintEvent;
+            paintEvent.nx = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
+            paintEvent.ny = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
+            paintEvent.pressure = cmd.pressure;
+            paintEvent.flags = kStrokeMove;
+            paintEvent.color = cmd.color.getARGB();
             
-            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
-            paintData.amplitude = cmd.pressure;
-            paintData.panPosition = 0.0f;
-            paintData.synthMode = 0;
-            
-            SpectralSynthEngine::instance().processPaintStroke(paintData);
+            SpectralSynthEngine::instance().pushGestureRT(paintEvent);
         }
         break;
     case PaintCommandID::EndStroke:
@@ -939,43 +1058,88 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 {
     juce::ScopedNoDenormals noDenormals;
     
-    // ========== DEBUG: processBlock heartbeat & unconditional test tone ==========
-    static int __dbg_pb_cnt = 0;
-    if (++__dbg_pb_cnt == 512) // throttle logs
+    // RT-safety checks
+    jassert(buffer.getNumSamples() > 0);
+    jassert(buffer.getNumChannels() > 0);
+    if (buffer.getNumSamples() <= 0 || buffer.getNumChannels() <= 0)
+        return;
+    // Ensure preallocated scratch buffers are large enough for this block
+    const int neededChannels = buffer.getNumChannels();
+    const int neededSamples  = buffer.getNumSamples();
+    if (neededChannels > preallocChannels || neededSamples > preallocBlockSize)
     {
-        __dbg_pb_cnt = 0;
-        #if defined(ENABLE_DEBUG_LOGS)
-        juce::Logger::writeToLog("DBG: processBlock() heartbeat sr=" + juce::String(getSampleRate()) +
-                                 " ch=" + juce::String(buffer.getNumChannels()) +
-                                 " samples=" + juce::String(buffer.getNumSamples()));
-        #endif
+        preallocChannels  = juce::jmax(preallocChannels, neededChannels);
+        preallocBlockSize = juce::jmax(preallocBlockSize, neededSamples);
+        preallocMasking.setSize(preallocChannels, preallocBlockSize, false, false, true);
+        preallocPaint.setSize(preallocChannels, preallocBlockSize, false, false, true);
     }
-
-    // Audio routing: Use SpectralSynthEngine when initialized, fallback to debug tone
-    if (SpectralSynthEngine::instance().isInitialized())
+    
+    // Update Phase 2 features: Host sync and modulation
+    auto playHead = getPlayHead();
+    if (playHead != nullptr)
     {
-        SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
-    }
-    else
-    {
-        // Fallback debug tone when engine not yet ready
-        #if defined(ENABLE_SANDBOX_TONE)
-        static float __dbg_phase = 0.0f;
-        const float __dbg_sr = float(getSampleRate());
-        const float __dbg_twopi = 2.0f * float(M_PI);
-        const float __dbg_freq = 440.0f;
-        const float __dbg_gain = 0.14f;
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        juce::AudioPlayHead::CurrentPositionInfo position;
+        if (playHead->getCurrentPosition(position))
         {
-            float* out = buffer.getWritePointer(ch);
-            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            movementLFO.setHostBPM(position.bpm > 0 ? position.bpm : 120.0);
+            movementLFO.setHostPlaying(position.isPlaying);
+            if (position.isPlaying && position.ppqPosition >= 0)
             {
-                out[i] += __dbg_gain * sinf(__dbg_phase);
-                __dbg_phase += __dbg_twopi * __dbg_freq / __dbg_sr;
-                if (__dbg_phase > __dbg_twopi) __dbg_phase -= __dbg_twopi;
+                // Convert quarter note position to beat position for LFO sync
+                movementLFO.setHostPosition(position.ppqPosition);
             }
         }
-        #endif
+    }
+    
+    // Update LFO and apply movement modulation to EMU filter
+    float lfoValue = movementLFO.getNextSample();
+    if (std::abs(lfoValue) > 0.001f) // Only modulate if LFO is active
+    {
+        // Apply movement modulation to filter cutoff (±1 octave range)
+        float baseCutoff = 0.7f; // Current EMU filter setting
+        float modulatedCutoff = juce::jlimit(0.0f, 1.0f, baseCutoff + lfoValue * 0.3f);
+        emuFilter.setCutoff(modulatedCutoff);
+    }
+    
+    // DEBUG heartbeat removed from audio thread: no logging in processBlock
+
+    // Audio routing: Use SpectralSynthEngine when initialized, fallback to debug tone
+    try
+    {
+        if (SpectralSynthEngine::instance().isInitialized())
+        {
+            SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
+        }
+        else
+        {
+            // Fallback debug tone when engine not yet ready
+            #if defined(ENABLE_SANDBOX_TONE)
+            static float __dbg_phase = 0.0f;
+            const float __dbg_sr = float(getSampleRate());
+            const float __dbg_twopi = 2.0f * float(M_PI);
+            const float __dbg_freq = 440.0f;
+            const float __dbg_gain = 0.14f;
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            {
+                float* out = buffer.getWritePointer(ch);
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    out[i] += __dbg_gain * sinf(__dbg_phase);
+                    __dbg_phase += __dbg_twopi * __dbg_freq / __dbg_sr;
+                    if (__dbg_phase > __dbg_twopi) __dbg_phase -= __dbg_twopi;
+                }
+            }
+            #endif
+        }
+    }
+    catch (...)
+    {
+        buffer.clear();
+        try {
+            std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+            if (logFile.is_open()) logFile << "CRASH_GUARD: SpectralSynthEngine.processAudioBlock threw" << "\n";
+        } catch (...) {}
+        return;
     }
     // ========== END DEBUG ==========
     
@@ -1077,17 +1241,27 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // Process SampleMaskingEngine first (it can run alongside other modes)
     if (sampleMaskingEngine.hasSample())
     {
-        const int ch = buffer.getNumChannels();
-        const int n  = buffer.getNumSamples();
-        // Use preallocated buffer alias to avoid per-block allocations
-        juce::AudioBuffer<float> maskingView(preallocMasking.getArrayOfWritePointers(), ch, n);
-        maskingView.clear();
-        sampleMaskingEngine.processBlock(maskingView);
-
-        // Mix the masking engine output into the main buffer (conservative level)
-        for (int i = 0; i < ch; ++i)
+        try
         {
-            buffer.addFrom(i, 0, maskingView, i, 0, n, 0.2f);
+            const int ch = buffer.getNumChannels();
+            const int n  = buffer.getNumSamples();
+            // Use preallocated buffer alias to avoid per-block allocations
+            juce::AudioBuffer<float> maskingView(preallocMasking.getArrayOfWritePointers(), ch, n);
+            maskingView.clear();
+            sampleMaskingEngine.processBlock(maskingView);
+
+            // Mix the masking engine output into the main buffer (conservative level)
+            for (int i = 0; i < ch; ++i)
+            {
+                buffer.addFrom(i, 0, maskingView, i, 0, n, 0.2f);
+            }
+        }
+        catch (...)
+        {
+            try {
+                std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+                if (logFile.is_open()) logFile << "CRASH_GUARD: SampleMaskingEngine.processBlock threw" << "\n";
+            } catch (...) {}
         }
     }
 
@@ -1096,21 +1270,13 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     //  - PaintEngine for visual/masking updates
     //  - SpectralSynthEngine for additive synthesis
     PaintEvent paintEvent;
-    #if !defined(NDEBUG)
-    static int __dbg_pop_counter = 0;
-    #endif
     while (paintQueue.pop(paintEvent))
     {
-        #if !defined(NDEBUG)
-        if (++__dbg_pop_counter >= 1)
-        {
-            __dbg_pop_counter = 0;
-            #if defined(ENABLE_DEBUG_LOGS)
-            juce::Logger::writeToLog("DBG_AUDIO: popped gesture x=" + juce::String(paintEvent.nx) +
-                                     " y=" + juce::String(paintEvent.ny) + " p=" + juce::String(paintEvent.pressure));
-            #endif
-        }
-        #endif
+        // DEBUG: Simple counter for audio thread (safe to increment)
+        static std::atomic<int> paintEventCount{0};
+        paintEventCount++;
+        
+        // No logging on audio thread
         
         // Map Y coordinate to frequency for perceptible demo
         float y = paintEvent.ny; // ensure normalized 0..1
@@ -1131,27 +1297,97 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         SpectralSynthEngine::instance().pushGestureRT(paintEvent);
     }
     
+    // DEBUG: Report mode once per second (safe periodic logging)
+    static int debugModeCounter = 0;
+    if (++debugModeCounter >= int(getSampleRate()))  // Once per second
+    {
+        debugModeCounter = 0;
+        DBG("ProcessBlock: Mode=" << (int)currentMode << " (Canvas=0)");
+    }
+    
     // Process audio based on current mode
     switch (currentMode)
     {
     case ProcessingMode::Canvas:
-        // Canvas mode: Always-on character chain EMU → Spectral → Tube
-        // This implements the "impossible to bypass" vintage analog processing philosophy
+        // Canvas mode: Spectral synthesis with optional secret sauce processing
         
-        // Step 1: EMU pre-sweetening (trims >14kHz fizz, adds signature mid-bite)
-        emuFilter.processBlock(buffer);
+        // Step 1: Paint-driven spectral synthesis (core functionality)
+        // RT-safety: Ensure engines are valid before processing
+        jassert(getSampleRate() > 0);
+        try { paintEngine.processBlock(buffer); } catch (...) {
+            buffer.clear();
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: PaintEngine.processBlock threw" << "\n"; } catch (...) {}
+            break;
+        }
+        try { SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate()); } catch (...) {
+            buffer.clear();
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: SpectralSynthEngine.processAudioBlock threw (Canvas)" << "\n"; } catch (...) {}
+            break;
+        }
         
-        // Step 2: Paint-driven spectral synthesis (with harmonic quantization)
-        paintEngine.processBlock(buffer);
-        SpectralSynthEngine::instance().processAudioBlock(buffer, getSampleRate());
+        // Step 2: Also process SpectralSynthEngineStub for test tone and debugging
+        try { spectralSynthEngineStub.processBlock(buffer, &paintQueue); } catch (...) {
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: spectralSynthEngineStub.processBlock threw" << "\n"; } catch (...) {}
+        }
         
-        // Step 3: Tube stage final glue (vintage compression, 2nd/3rd harmonics align)  
-        tubeStage.process(buffer);
+        // Step 3: Secret sauce processing with parallel blend (Phase 2 feature)
+        if (!bypassSecretSauce.load()) {
+            // Get character blend parameter (0.05 to 1.0)
+            float characterBlend = apvts.getRawParameterValue("characterBlend")->load();
+            
+            if (characterBlend < 0.99f) // Only create dry buffer if blend < 100%
+            {
+                // Create copy of dry signal for parallel processing
+                const int numChannels = buffer.getNumChannels();
+                const int numSamples = buffer.getNumSamples();
+                juce::AudioBuffer<float> wetBuffer(numChannels, numSamples);
+                
+                // Copy dry signal to wet buffer for character processing
+                for (int ch = 0; ch < numChannels; ++ch)
+                    wetBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+                
+                // Apply character processing to wet buffer
+                try { emuFilter.processBlock(wetBuffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: emuFilter.processBlock threw (wet)" << "\n"; } catch (...) {}
+                }
+                try { tubeStage.process(wetBuffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: tubeStage.process threw (wet)" << "\n"; } catch (...) {}
+                }
+                
+                // Equal-power crossfade between dry and wet
+                const float dryGain = std::sqrt(1.0f - characterBlend);
+                const float wetGain = std::sqrt(characterBlend);
+                
+                for (int ch = 0; ch < numChannels; ++ch)
+                {
+                    auto* dryData = buffer.getWritePointer(ch);
+                    const auto* wetData = wetBuffer.getReadPointer(ch);
+                    
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        dryData[i] = dryData[i] * dryGain + wetData[i] * wetGain;
+                    }
+                }
+            }
+            else
+            {
+                // 100% character processing, no parallel blend needed
+                try { emuFilter.processBlock(buffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: emuFilter.processBlock threw (dry)" << "\n"; } catch (...) {}
+                }
+                try { tubeStage.process(buffer); } catch (...) {
+                    try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: tubeStage.process threw (dry)" << "\n"; } catch (...) {}
+                }
+            }
+        }
         break;
         
     case ProcessingMode::Forge:
         // Forge mode: Only ForgeProcessor
-        forgeProcessor.processBlock(buffer, midi);
+        try { forgeProcessor.processBlock(buffer, midi); } catch (...) {
+            buffer.clear();
+            try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: forgeProcessor.processBlock threw" << "\n"; } catch (...) {}
+        }
         break;
         
     case ProcessingMode::Hybrid:
@@ -1163,10 +1399,18 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             paintView.clear();
             
             // Process paint engine with character chain into separate buffer
-            emuFilter.processBlock(paintView);
-            paintEngine.processBlock(paintView);
-            SpectralSynthEngine::instance().processAudioBlock(paintView, getSampleRate());
-            tubeStage.process(paintView);
+            try { emuFilter.processBlock(paintView); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: emuFilter.processBlock threw (hybrid)" << "\n"; } catch (...) {}
+            }
+            try { paintEngine.processBlock(paintView); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: PaintEngine.processBlock threw (hybrid)" << "\n"; } catch (...) {}
+            }
+            try { SpectralSynthEngine::instance().processAudioBlock(paintView, getSampleRate()); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: SpectralSynthEngine.processAudioBlock threw (hybrid)" << "\n"; } catch (...) {}
+            }
+            try { tubeStage.process(paintView); } catch (...) {
+                try { std::ofstream f("C:\\temp\\spectral_debug.log", std::ios::app); if (f.is_open()) f << "CRASH_GUARD: tubeStage.process threw (hybrid)" << "\n"; } catch (...) {}
+            }
             
             // Process forge engine into main buffer (no character processing for pure forge)
             forgeProcessor.processBlock(buffer, midi);
@@ -1276,6 +1520,62 @@ void ARTEFACTAudioProcessor::setMagicSwitch(bool enabled)
 
 void ARTEFACTAudioProcessor::processStrokeEvent(const StrokeEvent& e)
 {
+    // Debug: Log incoming stroke coordinates (clamped for safety)
+    const float clampedX = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.x));
+    const float clampedY = juce::jlimit(0.0f, 1.0f, static_cast<float>(e.y));
+    DBG("processStrokeEvent: x=" << clampedX << " y=" << clampedY << " pressure=" << e.pressure);
+
+    // Throttled file logging with stroke IDs to reduce spam
+    // Detect stroke lifecycle from pressure: start(~1), move(0<.. <1), end(~0)
+    static std::atomic<long long> globalStrokeId{0};
+    thread_local long long currentStrokeId = -1;
+    thread_local int moveCounter = 0;
+    const bool isStart = e.pressure >= 0.99f;
+    const bool isEnd   = e.pressure <= 0.01f;
+
+    if (isStart)
+    {
+        currentStrokeId = ++globalStrokeId;
+        moveCounter = 0;
+    }
+    else if (currentStrokeId < 0)
+    {
+        // Assign an ID if a move arrives without an explicit start
+        currentStrokeId = ++globalStrokeId;
+    }
+
+    const bool coordsClamped = (clampedX != e.x) || (clampedY != e.y);
+
+    auto writeStrokeLog = [&](const char* phase){
+        std::ofstream logFile("C:\\temp\\spectral_debug.log", std::ios::app);
+        if (logFile.is_open()) {
+            logFile << "PROCESS_STROKE: id=" << currentStrokeId
+                    << " phase=" << phase
+                    << " x=" << clampedX
+                    << " y=" << clampedY
+                    << " pressure=" << e.pressure
+                    << (coordsClamped ? " clamped=true" : "")
+                    << "\n";
+        }
+    };
+
+    if (isStart)
+    {
+        writeStrokeLog("start");
+    }
+    else if (isEnd)
+    {
+        writeStrokeLog("end");
+        currentStrokeId = -1;
+        moveCounter = 0;
+    }
+    else
+    {
+        // Log every 10th move to avoid flooding
+        if ((++moveCounter % 10) == 0)
+            writeStrokeLog("move");
+    }
+    
     // Update UI frame for stroke-to-audio bridge
     uiFrame.pressure = juce::jlimit(0.0f, 1.0f, e.pressure);
     uiFrame.size = juce::jlimit(0.0f, 1.0f, e.size);
@@ -1284,16 +1584,20 @@ void ARTEFACTAudioProcessor::processStrokeEvent(const StrokeEvent& e)
     
     // Convert StrokeEvent to PaintEvent and push to RT-safe queue
     PaintEvent paintEvent;
-    paintEvent.nx = static_cast<float>(e.x) / 1000.0f; // Assuming x is 0-1000, normalize to 0-1
-    paintEvent.ny = static_cast<float>(e.y) / 1000.0f; // Assuming y is 0-1000, normalize to 0-1  
+    // FIX: Coordinates are already 0-1 from PixelCanvas, no need to divide by 1000
+    paintEvent.nx = clampedX;
+    paintEvent.ny = clampedY;
     paintEvent.pressure = e.pressure;
     paintEvent.flags = kStrokeMove; // Default to stroke move
     paintEvent.color = e.colour.getARGB(); // Convert JUCE colour to ARGB
+    
+    DBG("Converted PaintEvent: nx=" << paintEvent.nx << " ny=" << paintEvent.ny);
     
     // Push to RT-safe paint queue
     if (!paintQueue.push(paintEvent))
     {
         // Queue full - this is normal under heavy painting, just drop the event
+        DBG("Paint queue full - dropping event");
         // RT-safe: No logging from parameter listeners
     }
 }

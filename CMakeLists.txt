@@ -56,6 +56,7 @@ target_sources(SpectralCanvas PRIVATE
     # Source/CanvasComponent.cpp  # LEGACY: Excluded - references old SpectralSynthEngine APIs
     Source/Core/PaintEngine.cpp
     Source/Core/SpectralSynthEngine.cpp
+    Source/Core/SpectralSynthEngineStub.cpp
     Source/Core/SampleMaskingEngine.cpp
     Source/Core/CDPSpectralEngine.cpp
     Source/Core/MaskSnapshot.cpp
@@ -86,9 +87,12 @@ target_sources(SpectralCanvas PRIVATE
     Source/dsp/VoicePool.h
     Source/dsp/SpectralSynthEngine.h
     Source/Core/MorphFilter.cpp
+    Source/Core/EMUFilter.cpp
     Source/Core/EMURomplerEngine.cpp
     Source/Core/TapeSpeed.cpp
     Source/Core/StereoWidth.cpp
+    Source/Core/LFO.cpp
+    # Source/Core/Audio/AudityVoiceModule.cpp  # Temporarily disabled - not integrated yet
     
     # Professional Features
     Source/Core/ProfessionalMeteringSuite.h
@@ -122,6 +126,18 @@ target_sources(SpectralCanvas PRIVATE
     Source/GUI/Skin/LogoComponent.cpp
     # MVP Minimal Editor
     Source/GUI/PluginEditorMVP.cpp
+    # Source/GUI/PluginEditorY2K.cpp  # Has access issues - using MVP editor instead
+    # Source/GUI/ThemeAwareLookAndFeel.cpp  # Temporarily excluded - duplicate method definitions
+    Source/GUI/PixelCanvasComponent.cpp    # Phase 2 UI - pixel canvas component
+    Source/GUI/WaveformThumbnailComponent.cpp  # Phase 2 UI - waveform display
+    Source/GUI/PianoRollComponent.cpp     # Phase 2 UI - piano roll sidebar
+    
+    # Phase 2 UI Components - Musical Intelligence
+    Source/GUI/MusicalGridOverlay.cpp      # Phase 2 UI - musical grid overlay
+    Source/GUI/EnhancedPianoRollComponent.cpp  # Phase 2 UI - enhanced piano roll
+    Source/GUI/ChordRecognitionOverlay.cpp     # Phase 2 UI - chord recognition
+    Source/GUI/EnhancedExportPod.cpp           # Phase 2 UI - enhanced export pod
+    Source/GUI/ScaleSelectorComponent.cpp      # Phase 2 UI - scale selector
     
     # Essential UI Components (fix for paint-to-audio interface)
     # Source/GUI/PaintControlPanel.cpp  # LEGACY: Excluded - potential API compatibility issues
@@ -146,6 +162,12 @@ target_sources(SpectralCanvas PRIVATE
     
     # Determinism utilities
     Source/Util/Determinism.cpp)
+
+# Exclude the legacy editor from builds (keep Y2K editor only)
+set_source_files_properties(Source/GUI/PluginEditor.cpp PROPERTIES
+    HEADER_FILE_ONLY TRUE
+    EXCLUDE_FROM_ALL TRUE
+    EXCLUDE_FROM_DEFAULT_BUILD TRUE)
     
 message(STATUS "Building SpectralCanvas Pro VST3 Plugin with complete paint-to-audio system")
 
@@ -161,9 +183,7 @@ target_compile_definitions(SpectralCanvas PRIVATE
     JUCE_MODULE_AVAILABLE_juce_gui_basics=1
     JUCE_DISABLE_JUCE_VERSION_PRINTING=1)
 
-# 🚨 FORCE MVP UI MODE - NO AMBIGUITY
-target_compile_definitions(SpectralCanvas PRIVATE SC_MVP_UI=1)
-target_compile_definitions(SpectralCanvas_Standalone PRIVATE SC_MVP_UI=1)
+# Default to full Y2K editor (no MVP flag forced)
 
 # Legacy build control
 target_compile_definitions(SpectralCanvas PRIVATE BUILD_LEGACY=$<BOOL:${BUILD_LEGACY}>)
@@ -188,8 +208,7 @@ target_link_libraries(SpectralCanvas PRIVATE
     juce::juce_dsp                  # DSP utilities (FFT, etc.)
     juce::juce_events               # Event handling
     juce::juce_graphics             # Drawing
-    juce::juce_gui_basics           # UI components
-    juce::juce_gui_extra)           # Advanced UI components
+    juce::juce_gui_basics)          # UI components
 
 # Generate JUCE header
 juce_generate_juce_header(SpectralCanvas)
@@ -353,7 +372,7 @@ if(BUILD_TESTS)
     juce_add_console_app(SC_PaintQueueTests
         PRODUCT_NAME "SpectralCanvas RT Tests")
     
-    target_sources(SpectralCanvasTests PRIVATE
+    target_sources(SC_PaintQueueTests PRIVATE
         Source/Tests/TestRunner.cpp
         Source/Tests/BasicTests.cpp
         Source/Tests/CriticalComponentTests.cpp
@@ -373,15 +392,15 @@ if(BUILD_TESTS)
         Source/Core/ColorToSpectralMapper.cpp
         Source/Core/SafetyChecks.h)
     
-    target_compile_definitions(SpectralCanvasTests PRIVATE
+    target_compile_definitions(SC_PaintQueueTests PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0)
     
-    target_include_directories(SpectralCanvasTests PRIVATE
+    target_include_directories(SC_PaintQueueTests PRIVATE
         Source
         Source/Core)
     
-    target_link_libraries(SpectralCanvasTests PRIVATE
+    target_link_libraries(SC_PaintQueueTests PRIVATE
         juce::juce_audio_basics
         juce::juce_audio_devices
         juce::juce_core
@@ -390,7 +409,7 @@ if(BUILD_TESTS)
         juce::juce_gui_basics
         juce::juce_events)
     
-    juce_generate_juce_header(SpectralCanvasTests)
+    juce_generate_juce_header(SC_PaintQueueTests)
 endif()
 
 # Build configuration

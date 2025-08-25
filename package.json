@@ -1,0 +1,27 @@
+{
+  "name": "artefact_production",
+  "version": "1.0.0",
+  "description": "See docs/ for build instructions\r # ARTEFACT_Production\r # ARTEFACT_Production",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1hoookkk/ARTEFACT_Production.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/1hoookkk/ARTEFACT_Production/issues"
+  },
+  "homepage": "https://github.com/1hoookkk/ARTEFACT_Production#readme",
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  }
+}
