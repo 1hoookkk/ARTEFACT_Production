@@ -1,0 +1,32 @@
+# SpectralCanvas Pro - Code Quality Tools Dependencies
+# Install with: pip install -r requirements.txt
+
+# File system monitoring
+watchdog>=2.1.0
+
+# Pattern matching and text processing
+regex>=2023.5.5
+
+# JSON processing (built-in, but specific version for compatibility)
+# json - built-in module
+
+# Path handling (built-in, but enhanced features)
+pathlib-abc>=0.1.0
+
+# Date and time handling (built-in)
+# datetime - built-in module
+
+# Subprocess management (built-in)
+# subprocess - built-in module
+
+# Threading support (built-in)
+# threading - built-in module
+
+# Argument parsing (built-in)
+# argparse - built-in module
+
+# Development and testing dependencies (optional)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=23.0.0
+mypy>=1.0.0
