@@ -37,6 +37,28 @@ PluginEditorY2K::PluginEditorY2K(ARTEFACTAudioProcessor& processor)
     // Start periodic updates (30 FPS for smooth animations)
     startTimerHz(30);
     
+    // Listen for Phase 2 parameter changes
+    audioProcessor_.apvts.addParameterListener("percHarmBalance", this);
+    audioProcessor_.apvts.addParameterListener("gridEnabled", this);
+    audioProcessor_.apvts.addParameterListener("scaleEnabled", this);
+    audioProcessor_.apvts.addParameterListener("overtoneGuidesEnabled", this);
+    audioProcessor_.apvts.addParameterListener("snapToleranceCents", this);
+
+    // Initialize canvas from parameter values
+    if (pixelCanvas_)
+    {
+        if (auto* p = audioProcessor_.apvts.getRawParameterValue("percHarmBalance"))
+            pixelCanvas_->setPercHarmBalance(p->load());
+        if (auto* p = audioProcessor_.apvts.getRawParameterValue("gridEnabled"))
+            pixelCanvas_->setGridEnabled(p->load() > 0.5f);
+        if (auto* p = audioProcessor_.apvts.getRawParameterValue("scaleEnabled"))
+            pixelCanvas_->setScaleEnabled(p->load() > 0.5f);
+        if (auto* p = audioProcessor_.apvts.getRawParameterValue("overtoneGuidesEnabled"))
+            pixelCanvas_->setOvertoneGuidesEnabled(p->load() > 0.5f);
+        if (auto* p = audioProcessor_.apvts.getRawParameterValue("snapToleranceCents"))
+            pixelCanvas_->setSnapToleranceCents(p->load());
+    }
+
     DBG("PluginEditorY2K: Initialized with Y2K theme");
 }
 
@@ -44,6 +66,13 @@ PluginEditorY2K::~PluginEditorY2K()
 {
     stopTimer();
     removeKeyListener(this);
+    
+    // Remove parameter listeners
+    audioProcessor_.apvts.removeParameterListener("percHarmBalance", this);
+    audioProcessor_.apvts.removeParameterListener("gridEnabled", this);
+    audioProcessor_.apvts.removeParameterListener("scaleEnabled", this);
+    audioProcessor_.apvts.removeParameterListener("overtoneGuidesEnabled", this);
+    audioProcessor_.apvts.removeParameterListener("snapToleranceCents", this);
     
     // Clean up parameter attachments first
     sliderAttachments_.clear();
@@ -418,6 +447,41 @@ bool PluginEditorY2K::keyPressed(const KeyPress& key, juce::Component* originati
         return true;
     }
     
+    // Quick canvas toggles
+    auto* gridParam   = audioProcessor_.apvts.getParameter("gridEnabled");
+    auto* scaleParam  = audioProcessor_.apvts.getParameter("scaleEnabled");
+    auto* overParam   = audioProcessor_.apvts.getParameter("overtoneGuidesEnabled");
+    auto* balParam    = audioProcessor_.apvts.getParameter("percHarmBalance");
+
+    if (key.getTextCharacter() == 'g' && gridParam)
+    {
+        if (auto* b = dynamic_cast<juce::AudioParameterBool*>(gridParam))
+            b->setValueNotifyingHost(!b->get());
+        return true;
+    }
+    if (key.getTextCharacter() == 's' && scaleParam)
+    {
+        if (auto* b = dynamic_cast<juce::AudioParameterBool*>(scaleParam))
+            b->setValueNotifyingHost(!b->get());
+        return true;
+    }
+    if (key.getTextCharacter() == 'o' && overParam)
+    {
+        if (auto* b = dynamic_cast<juce::AudioParameterBool*>(overParam))
+            b->setValueNotifyingHost(!b->get());
+        return true;
+    }
+    if (balParam && (key.getTextCharacter() == '[' || key.getTextCharacter() == ']'))
+    {
+        if (auto* f = dynamic_cast<juce::AudioParameterFloat*>(balParam))
+        {
+            float v = f->get();
+            v += (key.getTextCharacter() == ']') ? 0.05f : -0.05f;
+            f->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, v));
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -501,4 +565,32 @@ bool PluginEditorY2K::isReducedMotionRequested() const
     // Platform-specific reduced motion detection would go here
     // For now, return false as a placeholder  
     return false;
+}
+
+void PluginEditorY2K::parameterChanged(const juce::String& parameterID, float newValue)
+{
+    if (parameterID == "percHarmBalance")
+    {
+        // Update canvas with new perc/harm balance for HPSS visual feedback
+        if (pixelCanvas_)
+        {
+            pixelCanvas_->setPercHarmBalance(newValue);
+        }
+    }
+    else if (parameterID == "gridEnabled")
+    {
+        if (pixelCanvas_) pixelCanvas_->setGridEnabled(newValue > 0.5f);
+    }
+    else if (parameterID == "scaleEnabled")
+    {
+        if (pixelCanvas_) pixelCanvas_->setScaleEnabled(newValue > 0.5f);
+    }
+    else if (parameterID == "overtoneGuidesEnabled")
+    {
+        if (pixelCanvas_) pixelCanvas_->setOvertoneGuidesEnabled(newValue > 0.5f);
+    }
+    else if (parameterID == "snapToleranceCents")
+    {
+        if (pixelCanvas_) pixelCanvas_->setSnapToleranceCents(newValue);
+    }
 }

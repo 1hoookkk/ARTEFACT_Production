@@ -62,7 +62,7 @@ void SpectralSynthEngineStub::processBlock(AudioBuffer<float>& buffer, SpectralP
         float testFreq = testToneFrequency_.load();
         double sampleRateValue = sampleRate_.load();
         float phaseIncrement = static_cast<float>(testFreq * 2.0 * MathConstants<double>::pi / sampleRateValue);
-        float testGain = 0.1f; // Quiet test tone
+        float testGain = 0.3f; // Louder test tone for audibility
         
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
@@ -230,7 +230,7 @@ float SpectralSynthEngineStub::pressureToAmplitude(float pressure) const noexcep
     float clampedPressure = jlimit(0.0f, 1.0f, pressure);
     
     // Power curve for more natural feel (pressure^0.7)
-    return std::pow(clampedPressure, 0.7f) * 0.4f; // Max 0.4 amplitude to prevent clipping
+    return std::pow(clampedPressure, 0.7f) * 1.5f; // Increased amplitude for audibility
 }
 
 // SimpleOscillator implementation

@@ -70,6 +70,26 @@ ARTEFACTAudioProcessor::ARTEFACTAudioProcessor()
     apvts.addParameterListener("featherFreq", this);
     apvts.addParameterListener("threshold", this);
     apvts.addParameterListener("protectHarmonics", this);
+    
+    // Phase 2 feature parameter listeners
+    apvts.addParameterListener("characterBlend", this);
+    apvts.addParameterListener("percHarmBalance", this);
+    apvts.addParameterListener("movementDepth", this);
+    apvts.addParameterListener("movementRate", this);
+    apvts.addParameterListener("movementSync", this);
+
+    // Canvas UI (Phase 2) parameter listeners
+    apvts.addParameterListener("gridEnabled", this);
+    apvts.addParameterListener("scaleEnabled", this);
+    apvts.addParameterListener("overtoneGuidesEnabled", this);
+    apvts.addParameterListener("snapToleranceCents", this);
+
+    // Audity Soul parameter listeners
+    apvts.addParameterListener(ParamIDs::emu_cutoff, this);
+    apvts.addParameterListener(ParamIDs::emu_resonance, this);
+    apvts.addParameterListener(ParamIDs::emu_bpm_sync, this);
+    apvts.addParameterListener(ParamIDs::emu_drift, this);
+    apvts.addParameterListener(ParamIDs::noise_type, this);
 }
 
 ARTEFACTAudioProcessor::~ARTEFACTAudioProcessor()
@@ -104,6 +124,9 @@ void ARTEFACTAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     // Always-on character chain: EMU → Spectral → Tube
     emuFilter.prepareToPlay(sampleRate, samplesPerBlock);
     tubeStage.prepare(sampleRate, samplesPerBlock);
+    
+    // Phase 2 feature: BPM-synced modulation
+    movementLFO.prepareToPlay(sampleRate);
     
     // Configure EMU filter for "pre-sweetening" (trims >14kHz fizz, adds signature mid-bite)
     emuFilter.setCutoff(0.7f);        // ~3.5kHz cutoff for signature EMU character  
@@ -341,6 +364,87 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARTEFACTAudioProcessor::crea
     parameters.push_back(std::make_unique<juce::AudioParameterBool>(
         "protectHarmonics", "Protect Harmonics", true));
     
+    //==============================================================================
+    // PHASE 2 FEATURES SECTION
+    
+    // Secret Sauce parallel blend (locked minimum for demo)
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "characterBlend", "Character Blend", 
+        juce::NormalisableRange<float>(0.05f, 1.0f, 0.01f), 0.5f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value * 100)) + "%"; }));
+    
+    // Perc/Harm balance for HPSS visual feedback
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "percHarmBalance", "Perc/Harm Balance", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.5f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { 
+            if (value < 0.33f) return "Percussive";
+            if (value > 0.67f) return "Harmonic";
+            return "Balanced";
+        }));
+    
+    // Movement knob (BPM-synced filter modulation)
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "movementDepth", "Movement Depth", 
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 0.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 1) + "%"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "movementRate", "Movement Rate", 
+        juce::StringArray{"1/16", "1/8", "1/4", "1/2", "1/1", "2/1", "4/1"}, 2)); // Default to 1/4
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "movementSync", "Movement BPM Sync", true));
+
+    //==============================================================================
+    // CANVAS UI (PHASE 2A) SECTION
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "gridEnabled", "Grid Enabled", true));
+
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "scaleEnabled", "Scale Lanes Enabled", true));
+
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        "overtoneGuidesEnabled", "Overtone Guides Enabled", false));
+
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "snapToleranceCents", "Snap Tolerance (cents)",
+        juce::NormalisableRange<float>(1.0f, 100.0f, 1.0f), 25.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float v, int){ return juce::String((int)v) + " cents"; }));
+
+    //==============================================================================
+    // AUDITY SOUL SECTION (5 parameters)
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParamIDs::emu_cutoff, "EMU Cutoff", 
+        juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 1200.0f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(int(value)) + " Hz"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParamIDs::emu_resonance, "EMU Resonance", 
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.65f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value, 2); }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterBool>(
+        ParamIDs::emu_bpm_sync, "EMU BPM Sync", false));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
+        ParamIDs::emu_drift, "EMU Drift", 
+        juce::NormalisableRange<float>(0.0f, 0.05f, 0.001f), 0.02f,
+        juce::String(), juce::AudioProcessorParameter::genericParameter,
+        [](float value, int) { return juce::String(value * 100.0f, 1) + "%"; }));
+    
+    parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
+        ParamIDs::noise_type, "Noise Type", 
+        juce::StringArray{"White", "Pink", "Mauve"}, 1));
+    
     return { parameters.begin(), parameters.end() };
 }
 
@@ -554,6 +658,36 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     else if (parameterID == "protectHarmonics")
     {
         // SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f); // API not yet implemented
+        // RT-safe: No logging from parameter listeners
+    }
+    
+    //==============================================================================
+    // PHASE 2 FEATURES SECTION
+    
+    else if (parameterID == "characterBlend")
+    {
+        // RT-safe: Store blend amount for equal-power crossfade in processBlock
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "percHarmBalance")
+    {
+        // RT-safe: Store balance for HPSS visual feedback and processing
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "movementDepth")
+    {
+        movementLFO.setDepth(newValue / 100.0f); // Convert percentage to 0-1
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "movementRate")
+    {
+        int rate = static_cast<int>(newValue);
+        movementLFO.setRate(static_cast<LFO::SyncRate>(rate));
+        // RT-safe: No logging from parameter listeners
+    }
+    else if (parameterID == "movementSync")
+    {
+        movementLFO.setBPMSync(newValue > 0.5f);
         // RT-safe: No logging from parameter listeners
     }
 }
@@ -924,6 +1058,33 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 {
     juce::ScopedNoDenormals noDenormals;
     
+    // Update Phase 2 features: Host sync and modulation
+    auto playHead = getPlayHead();
+    if (playHead != nullptr)
+    {
+        juce::AudioPlayHead::CurrentPositionInfo position;
+        if (playHead->getCurrentPosition(position))
+        {
+            movementLFO.setHostBPM(position.bpm > 0 ? position.bpm : 120.0);
+            movementLFO.setHostPlaying(position.isPlaying);
+            if (position.isPlaying && position.ppqPosition >= 0)
+            {
+                // Convert quarter note position to beat position for LFO sync
+                movementLFO.setHostPosition(position.ppqPosition);
+            }
+        }
+    }
+    
+    // Update LFO and apply movement modulation to EMU filter
+    float lfoValue = movementLFO.getNextSample();
+    if (std::abs(lfoValue) > 0.001f) // Only modulate if LFO is active
+    {
+        // Apply movement modulation to filter cutoff (±1 octave range)
+        float baseCutoff = 0.7f; // Current EMU filter setting
+        float modulatedCutoff = juce::jlimit(0.0f, 1.0f, baseCutoff + lfoValue * 0.3f);
+        emuFilter.setCutoff(modulatedCutoff);
+    }
+    
     // DEBUG heartbeat removed from audio thread: no logging in processBlock
 
     // Audio routing: Use SpectralSynthEngine when initialized, fallback to debug tone
@@ -1119,13 +1280,47 @@ void ARTEFACTAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         // Step 2: Also process SpectralSynthEngineStub for test tone and debugging
         spectralSynthEngineStub.processBlock(buffer, &paintQueue);
         
-        // Step 3: Secret sauce processing (A/B testable)
+        // Step 3: Secret sauce processing with parallel blend (Phase 2 feature)
         if (!bypassSecretSauce.load()) {
-            // EMU pre-sweetening (trims >14kHz fizz, adds signature mid-bite)
-            emuFilter.processBlock(buffer);
+            // Get character blend parameter (0.05 to 1.0)
+            float characterBlend = apvts.getRawParameterValue("characterBlend")->load();
             
-            // Tube stage final glue (vintage compression, 2nd/3rd harmonics align)  
-            tubeStage.process(buffer);
+            if (characterBlend < 0.99f) // Only create dry buffer if blend < 100%
+            {
+                // Create copy of dry signal for parallel processing
+                const int numChannels = buffer.getNumChannels();
+                const int numSamples = buffer.getNumSamples();
+                juce::AudioBuffer<float> wetBuffer(numChannels, numSamples);
+                
+                // Copy dry signal to wet buffer for character processing
+                for (int ch = 0; ch < numChannels; ++ch)
+                    wetBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+                
+                // Apply character processing to wet buffer
+                emuFilter.processBlock(wetBuffer);
+                tubeStage.process(wetBuffer);
+                
+                // Equal-power crossfade between dry and wet
+                const float dryGain = std::sqrt(1.0f - characterBlend);
+                const float wetGain = std::sqrt(characterBlend);
+                
+                for (int ch = 0; ch < numChannels; ++ch)
+                {
+                    auto* dryData = buffer.getWritePointer(ch);
+                    const auto* wetData = wetBuffer.getReadPointer(ch);
+                    
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        dryData[i] = dryData[i] * dryGain + wetData[i] * wetGain;
+                    }
+                }
+            }
+            else
+            {
+                // 100% character processing, no parallel blend needed
+                emuFilter.processBlock(buffer);
+                tubeStage.process(buffer);
+            }
         }
         break;
         

@@ -124,11 +124,18 @@ target_sources(SpectralCanvas PRIVATE
     Source/GUI/Skin/LogoComponent.cpp
     # MVP Minimal Editor
     Source/GUI/PluginEditorMVP.cpp
-    Source/GUI/PluginEditorY2K.cpp
+    # Source/GUI/PluginEditorY2K.cpp  # Temporarily excluded due to access issues
     # Source/GUI/ThemeAwareLookAndFeel.cpp  # Temporarily excluded - duplicate method definitions
     Source/GUI/PixelCanvasComponent.cpp    # Phase 2 UI - pixel canvas component
     Source/GUI/WaveformThumbnailComponent.cpp  # Phase 2 UI - waveform display
     Source/GUI/PianoRollComponent.cpp     # Phase 2 UI - piano roll sidebar
+    
+    # Phase 2 UI Components - Musical Intelligence
+    Source/GUI/MusicalGridOverlay.cpp      # Phase 2 UI - musical grid overlay
+    Source/GUI/EnhancedPianoRollComponent.cpp  # Phase 2 UI - enhanced piano roll
+    Source/GUI/ChordRecognitionOverlay.cpp     # Phase 2 UI - chord recognition
+    Source/GUI/EnhancedExportPod.cpp           # Phase 2 UI - enhanced export pod
+    Source/GUI/ScaleSelectorComponent.cpp      # Phase 2 UI - scale selector
     
     # Essential UI Components (fix for paint-to-audio interface)
     # Source/GUI/PaintControlPanel.cpp  # LEGACY: Excluded - potential API compatibility issues

@@ -61,4 +61,18 @@ namespace ParamIDs
     inline constexpr auto featherFreq = "featherFreq";
     inline constexpr auto threshold = "threshold";
     inline constexpr auto protectHarmonics = "protectHarmonics";
+
+    // Canvas UI (Phase 2)
+    inline constexpr auto gridEnabled = "gridEnabled";
+    inline constexpr auto scaleEnabled = "scaleEnabled";
+    inline constexpr auto overtoneGuidesEnabled = "overtoneGuidesEnabled";
+    inline constexpr auto snapToleranceCents = "snapToleranceCents";
+    inline constexpr auto percHarmBalance = "percHarmBalance"; // already present in APVTS
+
+    // Audity Soul (EMU enhancement)
+    inline constexpr auto emu_cutoff = "emu_cutoff";
+    inline constexpr auto emu_resonance = "emu_resonance";
+    inline constexpr auto emu_bpm_sync = "emu_bpm_sync";
+    inline constexpr auto emu_drift = "emu_drift";
+    inline constexpr auto noise_type = "noise_type";
 }

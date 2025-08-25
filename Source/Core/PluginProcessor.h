@@ -16,6 +16,8 @@
 #include "Core/PaintQueue.h"
 #include "Core/EMUFilter.h"
 #include "Core/TubeStage.h"
+#include "Core/LFO.h"
+#include "ParamIDs.h"
 
 class ARTEFACTAudioProcessor : public juce::AudioProcessor,
     public juce::AudioProcessorValueTreeState::Listener
@@ -126,6 +128,9 @@ private:
     // Always-on character chain: EMU → Spectral → Tube
     EMUFilter emuFilter;
     TubeStage tubeStage;
+    
+    // Phase 2 feature: BPM-synced modulation
+    LFO movementLFO;
 
     enum class ProcessingMode { Forge = 0, Canvas, Hybrid };
     ProcessingMode currentMode = ProcessingMode::Canvas;

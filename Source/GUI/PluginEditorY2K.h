@@ -24,7 +24,8 @@ class SpectralSynthEngineStub;
  */
 class PluginEditorY2K : public juce::AudioProcessorEditor,
                         public juce::KeyListener,
-                        public juce::Timer
+                        public juce::Timer,
+                        public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     explicit PluginEditorY2K(ARTEFACTAudioProcessor& processor);
@@ -40,6 +41,9 @@ public:
     // Accessibility and safety
     void panicDisableAllEffects();
     void setReduceMotion(bool reduce);
+    
+    // Parameter listener
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
 
 private:
     // Core references
