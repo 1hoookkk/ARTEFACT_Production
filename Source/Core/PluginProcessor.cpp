@@ -3,7 +3,7 @@
 #include "GUI/PluginEditor.h"
 #include "GUI/PluginEditorMVP.h"
 #include "GUI/PluginEditorVector.h"
-#include "GUI/PluginEditorY2K.h"
+#include "GUI/PluginEditorMVP.h"
 #include <fstream>
 
 //==============================================================================
@@ -85,11 +85,11 @@ ARTEFACTAudioProcessor::ARTEFACTAudioProcessor()
     apvts.addParameterListener("snapToleranceCents", this);
 
     // Audity Soul parameter listeners
-    apvts.addParameterListener(ParamIDs::emu_cutoff, this);
-    apvts.addParameterListener(ParamIDs::emu_resonance, this);
-    apvts.addParameterListener(ParamIDs::emu_bpm_sync, this);
-    apvts.addParameterListener(ParamIDs::emu_drift, this);
-    apvts.addParameterListener(ParamIDs::noise_type, this);
+    apvts.addParameterListener("emu_cutoff", this);
+    apvts.addParameterListener("emu_resonance", this);
+    apvts.addParameterListener("emu_bpm_sync", this);
+    apvts.addParameterListener("emu_drift", this);
+    apvts.addParameterListener("noise_type", this);
 }
 
 ARTEFACTAudioProcessor::~ARTEFACTAudioProcessor()
@@ -421,28 +421,28 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARTEFACTAudioProcessor::crea
     // AUDITY SOUL SECTION (5 parameters)
     
     parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
-        ParamIDs::emu_cutoff, "EMU Cutoff", 
+        "emu_cutoff", "EMU Cutoff", 
         juce::NormalisableRange<float>(20.0f, 20000.0f, 1.0f, 0.3f), 1200.0f,
         juce::String(), juce::AudioProcessorParameter::genericParameter,
         [](float value, int) { return juce::String(int(value)) + " Hz"; }));
     
     parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
-        ParamIDs::emu_resonance, "EMU Resonance", 
+        "emu_resonance", "EMU Resonance", 
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.65f,
         juce::String(), juce::AudioProcessorParameter::genericParameter,
         [](float value, int) { return juce::String(value, 2); }));
     
     parameters.push_back(std::make_unique<juce::AudioParameterBool>(
-        ParamIDs::emu_bpm_sync, "EMU BPM Sync", false));
+        "emu_bpm_sync", "EMU BPM Sync", false));
     
     parameters.push_back(std::make_unique<juce::AudioParameterFloat>(
-        ParamIDs::emu_drift, "EMU Drift", 
+        "emu_drift", "EMU Drift", 
         juce::NormalisableRange<float>(0.0f, 0.05f, 0.001f), 0.02f,
         juce::String(), juce::AudioProcessorParameter::genericParameter,
         [](float value, int) { return juce::String(value * 100.0f, 1) + "%"; }));
     
     parameters.push_back(std::make_unique<juce::AudioParameterChoice>(
-        ParamIDs::noise_type, "Noise Type", 
+        "noise_type", "Noise Type", 
         juce::StringArray{"White", "Pink", "Mauve"}, 1));
     
     return { parameters.begin(), parameters.end() };
@@ -713,7 +713,7 @@ void ARTEFACTAudioProcessor::enqueueSampleLoad(const juce::File& file)
 juce::AudioProcessorEditor* ARTEFACTAudioProcessor::createEditor()
 {
     // Use the polished Y2K theme as the default editor
-    return new PluginEditorY2K(*this);
+    return new PluginEditorMVP(*this, apvts);
 }
 
 //==============================================================================

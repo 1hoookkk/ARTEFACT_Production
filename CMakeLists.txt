@@ -91,6 +91,8 @@ target_sources(SpectralCanvas PRIVATE
     Source/Core/EMURomplerEngine.cpp
     Source/Core/TapeSpeed.cpp
     Source/Core/StereoWidth.cpp
+    Source/Core/LFO.cpp
+    Source/Core/Audio/AudityVoiceModule.cpp
     
     # Professional Features
     Source/Core/ProfessionalMeteringSuite.h
@@ -124,7 +126,7 @@ target_sources(SpectralCanvas PRIVATE
     Source/GUI/Skin/LogoComponent.cpp
     # MVP Minimal Editor
     Source/GUI/PluginEditorMVP.cpp
-    # Source/GUI/PluginEditorY2K.cpp  # Temporarily excluded due to access issues
+    # Source/GUI/PluginEditorY2K.cpp  # Has access issues - using MVP editor instead
     # Source/GUI/ThemeAwareLookAndFeel.cpp  # Temporarily excluded - duplicate method definitions
     Source/GUI/PixelCanvasComponent.cpp    # Phase 2 UI - pixel canvas component
     Source/GUI/WaveformThumbnailComponent.cpp  # Phase 2 UI - waveform display
@@ -370,7 +372,7 @@ if(BUILD_TESTS)
     juce_add_console_app(SC_PaintQueueTests
         PRODUCT_NAME "SpectralCanvas RT Tests")
     
-    target_sources(SpectralCanvasTests PRIVATE
+    target_sources(SC_PaintQueueTests PRIVATE
         Source/Tests/TestRunner.cpp
         Source/Tests/BasicTests.cpp
         Source/Tests/CriticalComponentTests.cpp
@@ -390,15 +392,15 @@ if(BUILD_TESTS)
         Source/Core/ColorToSpectralMapper.cpp
         Source/Core/SafetyChecks.h)
     
-    target_compile_definitions(SpectralCanvasTests PRIVATE
+    target_compile_definitions(SC_PaintQueueTests PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0)
     
-    target_include_directories(SpectralCanvasTests PRIVATE
+    target_include_directories(SC_PaintQueueTests PRIVATE
         Source
         Source/Core)
     
-    target_link_libraries(SpectralCanvasTests PRIVATE
+    target_link_libraries(SC_PaintQueueTests PRIVATE
         juce::juce_audio_basics
         juce::juce_audio_devices
         juce::juce_core
@@ -407,7 +409,7 @@ if(BUILD_TESTS)
         juce::juce_gui_basics
         juce::juce_events)
     
-    juce_generate_juce_header(SpectralCanvasTests)
+    juce_generate_juce_header(SC_PaintQueueTests)
 endif()
 
 # Build configuration

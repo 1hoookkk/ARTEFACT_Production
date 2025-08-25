@@ -23,6 +23,7 @@
 #include <array>
 #include <random>
 #include <memory>
+#include "../LFO.h"
 
 class AudityVoiceModule
 {
@@ -43,6 +44,14 @@ public:
     void setBpmSync(bool enabled);
     void setDrift(float driftAmount);
     void setNoiseType(int noiseType); // 0=white, 1=pink, 2=mauve
+    void setPunchPath(bool enabled, float mix = 0.3f, float drive = 2.0f);
+    
+    //==============================================================================
+    // Modulation matrix control
+    void setMovementDepth(float depth);        // Movement knob (0.0-1.0)
+    void setLFOModulation(float toCutoff, float toResonance, float toVCA);
+    void setEnvelopeModulation(float toCutoff, float toResonance);
+    void setMovementLFO(LFO* lfo);            // Shared LFO from processor
 
     //==============================================================================
     // Host synchronization
@@ -406,12 +415,203 @@ private:
     SSM2050Envelope envelope;
     
     //==============================================================================
+    // SSM2020-inspired VCA with Punch Path
+    struct SSM2020VCA
+    {
+        bool punchPathEnabled = false;
+        float punchMix = 0.3f;         // Amount of punch path in final mix
+        float punchDrive = 2.0f;       // Aggressive saturation drive
+        float hpfCutoff = 200.0f;      // High-pass filter cutoff for punch path
+        
+        // High-pass filter state for punch path
+        struct HPFilter
+        {
+            float x1 = 0.0f, y1 = 0.0f;
+            float sampleRate = 44100.0f;
+            
+            void setSampleRate(float sr) { sampleRate = sr; }
+            
+            void reset() { x1 = y1 = 0.0f; }
+            
+            float process(float input, float cutoffHz)
+            {
+                // Simple 1-pole HPF for punch path
+                float RC = 1.0f / (cutoffHz * juce::MathConstants<float>::twoPi);
+                float dt = 1.0f / sampleRate;
+                float alpha = RC / (RC + dt);
+                
+                float output = alpha * (y1 + input - x1);
+                x1 = input;
+                y1 = output;
+                return output;
+            }
+        } punchHPF;
+        
+        void setSampleRate(float sampleRate)
+        {
+            punchHPF.setSampleRate(sampleRate);
+        }
+        
+        void reset()
+        {
+            punchHPF.reset();
+        }
+        
+        void setPunchPath(bool enabled, float mix = 0.3f, float drive = 2.0f)
+        {
+            punchPathEnabled = enabled;
+            punchMix = juce::jlimit(0.0f, 1.0f, mix);
+            punchDrive = juce::jlimit(1.0f, 5.0f, drive);
+        }
+        
+        float process(float input, float vcaLevel, bool useExponentialResponse = false)
+        {
+            // Main VCA path - clean linear or exponential amplification
+            float mainOutput;
+            if (useExponentialResponse)
+            {
+                // Exponential VCA response (more musical for envelopes)
+                mainOutput = input * std::pow(vcaLevel, 2.0f);
+            }
+            else
+            {
+                // Linear VCA response (cleaner for precise control)
+                mainOutput = input * vcaLevel;
+            }
+            
+            // Soft-clip the main path
+            mainOutput = std::tanh(mainOutput * 0.8f);
+            
+            if (!punchPathEnabled)
+                return mainOutput;
+            
+            // Punch path processing
+            float punchSignal = punchHPF.process(input, hpfCutoff);
+            
+            // Aggressive saturation for punch path
+            punchSignal = std::tanh(punchSignal * punchDrive) * vcaLevel;
+            
+            // Mix punch path back with main signal
+            return mainOutput * (1.0f - punchMix) + punchSignal * punchMix;
+        }
+    };
+    
+    SSM2020VCA vca;
+    
+    //==============================================================================
+    // Modulation Matrix (Audity-style routing)
+    struct ModulationMatrix
+    {
+        // Modulation sources (values between -1.0 and 1.0)
+        float lfoValue = 0.0f;
+        float envelopeValue = 0.0f;
+        float velocityValue = 0.0f;
+        float pressureValue = 0.0f;
+        
+        // Modulation depths (0.0 to 1.0)
+        float lfoToCutoff = 0.0f;
+        float lfoToResonance = 0.0f;
+        float lfoToVCALevel = 0.0f;
+        float lfoToPitch = 0.0f;          // Future: for oscillator pitch mod
+        
+        float envelopeToCutoff = 0.0f;
+        float envelopeToResonance = 0.0f;
+        
+        float velocityToCutoff = 0.0f;
+        float velocityToVCALevel = 0.3f;  // Default velocity sensitivity
+        
+        float pressureToCutoff = 0.2f;    // Default pressure to cutoff
+        float pressureToResonance = 0.1f; // Default pressure to resonance
+        
+        // Movement knob (global modulation depth multiplier)
+        float movementDepth = 0.0f;
+        
+        void reset()
+        {
+            lfoValue = 0.0f;
+            envelopeValue = 0.0f;
+            velocityValue = 0.0f;
+            pressureValue = 0.0f;
+        }
+        
+        void updateSources(float lfo, float envelope, float velocity, float pressure)
+        {
+            lfoValue = lfo;
+            envelopeValue = envelope;
+            velocityValue = velocity;
+            pressureValue = pressure;
+        }
+        
+        float getModulatedCutoff(float baseCutoff) const
+        {
+            float modulation = 0.0f;
+            
+            // LFO modulation (scaled by Movement depth)
+            modulation += lfoValue * lfoToCutoff * movementDepth;
+            
+            // Envelope modulation
+            modulation += envelopeValue * envelopeToCutoff;
+            
+            // Velocity modulation
+            modulation += velocityValue * velocityToCutoff;
+            
+            // Pressure modulation (real-time paint control)
+            modulation += pressureValue * pressureToCutoff;
+            
+            // Apply modulation as frequency multiplier (exponential)
+            float multiplier = std::pow(2.0f, modulation * 4.0f); // ±4 octaves max
+            return baseCutoff * juce::jlimit(0.1f, 10.0f, multiplier);
+        }
+        
+        float getModulatedResonance(float baseResonance) const
+        {
+            float modulation = 0.0f;
+            
+            // LFO modulation (scaled by Movement depth)
+            modulation += lfoValue * lfoToResonance * movementDepth;
+            
+            // Envelope modulation
+            modulation += envelopeValue * envelopeToResonance;
+            
+            // Pressure modulation
+            modulation += pressureValue * pressureToResonance;
+            
+            return juce::jlimit(0.0f, 0.99f, baseResonance + modulation * 0.5f);
+        }
+        
+        float getModulatedVCALevel(float baseLevel) const
+        {
+            float modulation = 0.0f;
+            
+            // LFO modulation (scaled by Movement depth)
+            modulation += lfoValue * lfoToVCALevel * movementDepth;
+            
+            // Velocity modulation
+            modulation += velocityValue * velocityToVCALevel;
+            
+            // Apply as linear modulation
+            return juce::jlimit(0.0f, 1.0f, baseLevel + modulation * 0.3f);
+        }
+        
+        // Future: getPitchModulation for oscillator pitch
+        float getPitchModulation() const
+        {
+            return lfoValue * lfoToPitch * movementDepth;
+        }
+    };
+    
+    ModulationMatrix modMatrix;
+    
+    // Movement LFO (for modulation matrix)
+    LFO* movementLFO = nullptr;  // Shared LFO instance from processor
+    
+    //==============================================================================
     // RT-Safe Noise Generators (preallocated)
     struct NoiseGenerators
     {
-        // White noise
-        std::mutable_thread_local std::mt19937 whiteRng{std::random_device{}()};
-        std::uniform_real_distribution<float> whiteDist{-1.0f, 1.0f};
+        // White noise (mutable to allow modification in const methods)
+        mutable std::mt19937 whiteRng{std::random_device{}()};
+        mutable std::uniform_real_distribution<float> whiteDist{-1.0f, 1.0f};
         
         // Pink noise (1/f)
         float pinkState[7] = {0.0f};

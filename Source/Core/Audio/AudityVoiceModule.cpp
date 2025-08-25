@@ -30,6 +30,9 @@ void AudityVoiceModule::prepare(double sampleRate, int maxBlockSize)
     envelope.setADSR(0.001f, 0.1f, 0.7f, 0.3f); // Default ADSR
     envelope.setOvershoot(1.1f); // 10% overshoot
     
+    // Initialize SSM2020 VCA
+    vca.setSampleRate(static_cast<float>(sampleRate));
+    
     // Reset all state
     reset();
 }
@@ -42,8 +45,14 @@ void AudityVoiceModule::reset()
     // Reset SSM2050 envelope
     envelope.reset();
     
+    // Reset SSM2020 VCA
+    vca.reset();
+    
     // Reset noise generators
     noiseGen.reset();
+    
+    // Reset modulation matrix
+    modMatrix.reset();
     
     // Reset modulation state
     driftPhase = 0.0f;
@@ -70,6 +79,10 @@ void AudityVoiceModule::process(juce::AudioBuffer<float>& buffer, int numSamples
     if (syncEnabled)
         updateBpmModulation();
     
+    // Update modulation matrix sources
+    float lfoValue = (movementLFO != nullptr) ? movementLFO->getCurrentValue() : 0.0f;
+    // Note: envelope value will be updated per-sample in the loop
+    
     // Process each channel
     for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
     {
@@ -81,15 +94,25 @@ void AudityVoiceModule::process(juce::AudioBuffer<float>& buffer, int numSamples
             smoothedCutoff += (targetCutoff - smoothedCutoff) * 0.01f;
             smoothedResonance += (targetResonance - smoothedResonance) * 0.01f;
             
+            // Get envelope level for modulation matrix
+            float envelopeLevel = envelope.process();
+            
+            // Update modulation matrix with current values
+            modMatrix.updateSources(lfoValue, envelopeLevel, strokeVelocity, strokePressure);
+            
             // Apply drift modulation
-            float modulatedCutoff = smoothedCutoff * (1.0f + currentDrift * driftAmount);
+            float driftModulatedCutoff = smoothedCutoff * (1.0f + currentDrift * driftAmount);
             
             // Apply BPM sync modulation if enabled
             if (syncEnabled)
             {
                 float bpmMod = std::sin(bpmPhase) * 0.1f; // ±10% modulation
-                modulatedCutoff *= (1.0f + bpmMod);
+                driftModulatedCutoff *= (1.0f + bpmMod);
             }
+            
+            // Apply modulation matrix modulation
+            float modulatedCutoff = modMatrix.getModulatedCutoff(driftModulatedCutoff);
+            float modulatedResonance = modMatrix.getModulatedResonance(smoothedResonance);
             
             // Stroke-aware gain staging
             float inputGain = 1.0f + (strokeVelocity - 0.5f) * 0.5f; // ±25%
@@ -113,19 +136,19 @@ void AudityVoiceModule::process(juce::AudioBuffer<float>& buffer, int numSamples
             static float lastCutoff = 0.0f;
             static float lastResonance = 0.0f;
             if (std::abs(modulatedCutoff - lastCutoff) > 1.0f || 
-                std::abs(smoothedResonance - lastResonance) > 0.01f)
+                std::abs(modulatedResonance - lastResonance) > 0.01f)
             {
-                filter.updateCoefficients(modulatedCutoff, smoothedResonance);
+                filter.updateCoefficients(modulatedCutoff, modulatedResonance);
                 lastCutoff = modulatedCutoff;
-                lastResonance = smoothedResonance;
+                lastResonance = modulatedResonance;
             }
             
             // Process through SSM2040-inspired filter
-            float output = filter.process(inputSample);
+            float filteredSample = filter.process(inputSample);
             
-            // Apply SSM2050 envelope (amplitude modulation)
-            float envelopeLevel = envelope.process();
-            output *= envelopeLevel;
+            // Apply SSM2050 envelope through SSM2020 VCA with modulation
+            float modulatedVCALevel = modMatrix.getModulatedVCALevel(envelopeLevel);
+            float output = vca.process(filteredSample, modulatedVCALevel, true); // Use exponential response
             
             // Write back to buffer
             channelData[sample] = output;
@@ -159,6 +182,37 @@ void AudityVoiceModule::setDrift(float driftAmount)
 void AudityVoiceModule::setNoiseType(int type)
 {
     noiseType.store(juce::jlimit(0, 2, type));
+}
+
+void AudityVoiceModule::setPunchPath(bool enabled, float mix, float drive)
+{
+    vca.setPunchPath(enabled, mix, drive);
+}
+
+//==============================================================================
+// Modulation matrix control
+
+void AudityVoiceModule::setMovementDepth(float depth)
+{
+    modMatrix.movementDepth = juce::jlimit(0.0f, 1.0f, depth);
+}
+
+void AudityVoiceModule::setLFOModulation(float toCutoff, float toResonance, float toVCA)
+{
+    modMatrix.lfoToCutoff = juce::jlimit(-1.0f, 1.0f, toCutoff);
+    modMatrix.lfoToResonance = juce::jlimit(-1.0f, 1.0f, toResonance);
+    modMatrix.lfoToVCALevel = juce::jlimit(-1.0f, 1.0f, toVCA);
+}
+
+void AudityVoiceModule::setEnvelopeModulation(float toCutoff, float toResonance)
+{
+    modMatrix.envelopeToCutoff = juce::jlimit(-1.0f, 1.0f, toCutoff);
+    modMatrix.envelopeToResonance = juce::jlimit(-1.0f, 1.0f, toResonance);
+}
+
+void AudityVoiceModule::setMovementLFO(LFO* lfo)
+{
+    movementLFO = lfo;
 }
 
 //==============================================================================
