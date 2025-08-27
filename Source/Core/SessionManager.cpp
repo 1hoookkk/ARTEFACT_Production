@@ -91,7 +91,7 @@ juce::ValueTree ProjectState::toValueTree() const
             sampleTree.setProperty("originalPath", sample.originalPath, nullptr);
             sampleTree.setProperty("embeddedId", sample.embeddedId, nullptr);
             sampleTree.setProperty("sampleName", sample.sampleName, nullptr);
-            sampleTree.setProperty("fileSize", sample.fileSize, nullptr);
+            sampleTree.setProperty("fileSize", static_cast<int>(sample.fileSize), nullptr);
             sampleTree.setProperty("hash", sample.hash, nullptr);
             sampleTree.setProperty("isEmbedded", sample.isEmbedded, nullptr);
             samplesTree.addChild(sampleTree, -1, nullptr);
@@ -201,7 +201,7 @@ void ProjectState::fromValueTree(const juce::ValueTree& tree)
             sample.originalPath = sampleTree.getProperty("originalPath", "");
             sample.embeddedId = sampleTree.getProperty("embeddedId", "");
             sample.sampleName = sampleTree.getProperty("sampleName", "");
-            sample.fileSize = sampleTree.getProperty("fileSize", 0);
+            sample.fileSize = static_cast<int64_t>(static_cast<int>(sampleTree.getProperty("fileSize", 0)));
             sample.hash = sampleTree.getProperty("hash", "");
             sample.isEmbedded = sampleTree.getProperty("isEmbedded", false);
             sampleReferences.push_back(sample);

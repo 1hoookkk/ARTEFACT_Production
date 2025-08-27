@@ -12,9 +12,9 @@
 //   1.25 0.65 0.9
 
 #include <juce_core/juce_core.h>
+#include <juce_events/juce_events.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
-#include <juce_events/juce_events.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -61,7 +61,7 @@ int main (int argc, char* argv[]) {
     const char* outputPath = argv[3];
 
     // Initialize JUCE minimal runtime (use GUI initializer for audio processing)
-    ScopedJuceInitialiser_GUI juceInit;
+    juce::ScopedJuceInitialiser_GUI juceInit;
 
     AudioFormatManager fmtMgr;
     fmtMgr.registerBasicFormats();

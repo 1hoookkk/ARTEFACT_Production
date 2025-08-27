@@ -2,6 +2,7 @@
 // Minimal test of RT-safe SpectralSynthEngineRTStub without EMU/Tube dependencies
 //
 #include <juce_core/juce_core.h>
+#include <juce_events/juce_events.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <iostream>
@@ -50,7 +51,7 @@ int main (int argc, char* argv[]) {
     const char* outputPath = argv[3];
 
     // Initialize JUCE minimal runtime
-    ScopedJuceInitialiser_GUI juceInit;
+    juce::ScopedJuceInitialiser_GUI juceInit;
 
     AudioFormatManager fmtMgr;
     fmtMgr.registerBasicFormats();

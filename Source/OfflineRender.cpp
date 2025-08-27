@@ -15,6 +15,7 @@
 #include "Core/StereoWidth.h"
 #include "Core/AtomicOscillator.h"
 #include "Core/ColorToSpectralMapper.h"
+#include "Core/PaintQueue.h"
 
 class OfflineRenderer
 {
@@ -116,12 +117,12 @@ private:
         std::cout << "Rendering: " << filename << " (magic: " << (magicEnabled ? "ON" : "OFF") << ")" << std::endl;
         
         // Create engines
-        SpectralSynthEngine spectralEngine;
+        auto& spectralEngine = SpectralSynthEngine::instance();
         TapeSpeed tapeSpeed;
         StereoWidth stereoWidth;
         
         // Prepare engines
-        spectralEngine.prepareToPlay(sampleRate, blockSize, numChannels);
+        spectralEngine.prepare(sampleRate, blockSize);
         tapeSpeed.prepareToPlay(sampleRate, blockSize);
         stereoWidth.prepareToPlay(sampleRate, blockSize);
         
@@ -150,12 +151,14 @@ private:
         juce::File outputFile = juce::File::getCurrentWorkingDirectory().getChildFile(filename);
         outputFile.deleteFile(); // Remove if exists
         
-        auto* writer = formatManager.createWriterFor(new juce::FileOutputStream(outputFile),
+        // Get WAV format and create writer
+        auto* wavFormat = formatManager.getDefaultFormat();
+        auto* writer = wavFormat ? wavFormat->createWriterFor(new juce::FileOutputStream(outputFile),
                                                     sampleRate, 
                                                     numChannels, 
                                                     16, // 16-bit
                                                     {},
-                                                    0);
+                                                    0) : nullptr;
         
         if (writer == nullptr)
         {
@@ -201,13 +204,14 @@ private:
                 if (currentTimeSeconds >= strokeStartTime && currentTimeSeconds < strokeEndTime)
                 {
                     // Trigger paint stroke in spectral engine
-                    spectralEngine.processPaintStrokeDirectToAudio(stroke.x, stroke.y, 
-                                                                  stroke.pressure, stroke.color);
+                    // Convert stroke to PaintEvent and push to engine
+                    PaintEvent event(stroke.x / 1000.0f, stroke.y / 1000.0f, stroke.pressure, kStrokeMove);
+                    spectralEngine.pushGestureRT(event);
                 }
             }
             
             // Generate spectral synthesis
-            spectralEngine.processBlock(renderBuffer);
+            spectralEngine.processAudioBlock(renderBuffer, sampleRate);
             
             // Apply vintage processing if enabled
             if (magicEnabled)

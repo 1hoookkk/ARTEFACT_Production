@@ -1,6 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
-#include "../ui/Panel.h"
+#include "../UI/Panel.h"
 #include "../Core/PluginProcessor.h"
 
 class PluginEditorVector : public juce::AudioProcessorEditor,

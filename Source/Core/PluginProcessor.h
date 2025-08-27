@@ -1,4 +1,4 @@
-﻿// Source/PluginProcessor.h
+// Source/PluginProcessor.h
 #pragma once
 
 #include <JuceHeader.h>
@@ -30,7 +30,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return JucePlugin_Name; }
+    const juce::String getName() const override { return "SpectralCanvas Pro"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -53,7 +53,7 @@ public:
     ForgeProcessor& getForgeProcessor() { return forgeProcessor; }
     PaintEngine& getPaintEngine() { return paintEngine; }
     SampleMaskingEngine& getSampleMaskingEngine() { return sampleMaskingEngine; }
-    SpectralSynthEngine& getSpectralSynthEngine() { return spectralSynthEngine; }
+    SpectralSynthEngine& getSpectralSynthEngine() { return SpectralSynthEngine::instance(); }
     SpectralSynthEngineStub* getSpectralSynthEngineStub() { return &spectralSynthEngineStub; }
     AudioRecorder& getAudioRecorder() { return audioRecorder; }
     
@@ -112,7 +112,7 @@ private:
     ForgeProcessor  forgeProcessor;
     PaintEngine paintEngine;
     SampleMaskingEngine sampleMaskingEngine;
-    SpectralSynthEngine spectralSynthEngine;
+    // SpectralSynthEngine is a singleton, accessed via instance()
     SpectralSynthEngineStub spectralSynthEngineStub;
     ParameterBridge parameterBridge;
     AudioRecorder audioRecorder;

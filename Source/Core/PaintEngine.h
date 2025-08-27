@@ -68,9 +68,7 @@ public:
               timestamp(juce::Time::getMillisecondCounter()) {}
     };
     
-    // Forward declarations
-    class Stroke;
-    class CanvasRegion;
+    // Forward declaration
     class SynthEngine;
     
     //==============================================================================

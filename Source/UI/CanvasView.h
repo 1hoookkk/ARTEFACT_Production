@@ -1,9 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "Theme.h"
-
-// Forward declaration
-class ARTEFACTAudioProcessor;
+#include "../Core/PluginProcessor.h"
 
 struct CanvasView : juce::Component
 {
