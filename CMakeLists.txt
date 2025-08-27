@@ -135,10 +135,10 @@ target_sources(SpectralCanvas PRIVATE
     Source/Core/SpectralBrushPresets.cpp
     
     # New Vector UI System
-    Source/ui/Panel.cpp
-    Source/ui/Panel.h
-    Source/ui/Tokens.h
-    Source/ui/Layout.h
+    Source/UI/Panel.cpp
+    Source/UI/Panel.h
+    Source/UI/Tokens.h
+    Source/UI/Layout.h
     Source/GUI/PluginEditorVector.cpp
     Source/GUI/PluginEditorVector.h
     # Source/GUI/PaintCanvasComponent.cpp  # Moved to .old - replaced by PixelCanvasComponent
@@ -284,7 +284,7 @@ juce_add_console_app(ConstructorOnly
     PRODUCT_NAME "Constructor Only Test")
 
 target_sources(ConstructorOnly PRIVATE
-    tests/ConstructorOnly.cpp
+    Tests/ConstructorOnly.cpp
     Source/Core/PluginProcessor.cpp
     Source/Core/Config.cpp
     Source/Core/AtomicOscillator.cpp
@@ -350,7 +350,7 @@ endif()
 # Unit tests executable (optional)
 option(BUILD_TESTS "Build unit tests" ON)
 if(BUILD_TESTS)
-    juce_add_console_app(SC_PaintQueueTests
+    juce_add_console_app(SpectralCanvasTests
         PRODUCT_NAME "SpectralCanvas RT Tests")
     
     target_sources(SpectralCanvasTests PRIVATE
@@ -361,6 +361,7 @@ if(BUILD_TESTS)
         Source/Tests/TestEnginePreparedness.cpp
         Source/Tests/ThreadSafetyTests.cpp
         Source/Tests/TestHarmonicQuantizer.cpp
+        Tests/PaintQueueTests.cpp
         Source/Core/PaintEngine.cpp
         Source/Core/ForgeProcessor.cpp
         Source/Core/ForgeVoice.cpp
@@ -480,28 +481,28 @@ if(EXISTS "${SC_ASSETS_FONT_DIR}")
     endif()
 endif()
 
-# === Tests ===
-option(BUILD_TESTS "Build unit/integration tests" ON)
-if (BUILD_TESTS)
-    juce_add_console_app(SpectralCanvasTests
-        PRODUCT_NAME "SpectralCanvas Tests")
-
-    target_sources(SC_PaintQueueTests PRIVATE
-        Tests/PaintQueueTests.cpp)
-
-    target_include_directories(SC_PaintQueueTests PRIVATE Source)
-
-    target_link_libraries(SC_PaintQueueTests PRIVATE
-        juce::juce_graphics
-        juce::juce_core
-        juce::juce_events)
-
-    target_compile_definitions(SC_PaintQueueTests PRIVATE
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0)
-
-    juce_generate_juce_header(SC_PaintQueueTests)
-
-    include(CTest)
-    add_test(NAME RT_PaintQueue COMMAND SC_PaintQueueTests)
-endif()
+# === Tests === (Disabled - using the test configuration above)
+# option(BUILD_TESTS "Build unit/integration tests" ON)
+# if (BUILD_TESTS)
+#     juce_add_console_app(SpectralCanvasTests
+#         PRODUCT_NAME "SpectralCanvas Tests")
+# 
+#     target_sources(SpectralCanvasTests PRIVATE
+#         Tests/PaintQueueTests.cpp)
+# 
+#     target_include_directories(SpectralCanvasTests PRIVATE Source)
+# 
+#     target_link_libraries(SpectralCanvasTests PRIVATE
+#         juce::juce_graphics
+#         juce::juce_core
+#         juce::juce_events)
+# 
+#     target_compile_definitions(SpectralCanvasTests PRIVATE
+#         JUCE_WEB_BROWSER=0
+#         JUCE_USE_CURL=0)
+# 
+#     juce_generate_juce_header(SpectralCanvasTests)
+# 
+#     include(CTest)
+#     add_test(NAME RT_PaintQueue COMMAND SpectralCanvasTests)
+# endif()

@@ -1,4 +1,4 @@
-﻿// Source/PluginProcessor.cpp
+// Source/PluginProcessor.cpp
 #include "PluginProcessor.h"
 #include "GUI/PluginEditor.h"
 #include "GUI/PluginEditorMVP.h"
@@ -443,13 +443,9 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     }
     else if (parameterID == "topNBands")
     {
-        int bandCount = static_cast<int>(newValue);
-        SpectralSynthEngine::instance().setTopNBands(bandCount);
-<<<<<<< HEAD
-        DBG("Top-N bands changed to: " << bandCount);
-=======
+        // int bandCount = static_cast<int>(newValue);
+        // TODO: SpectralSynthEngine::instance().setTopNBands(bandCount);
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     
     //==============================================================================
@@ -521,57 +517,33 @@ void ARTEFACTAudioProcessor::parameterChanged(const juce::String& parameterID, f
     
     else if (parameterID == "maskBlend")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue);
-<<<<<<< HEAD
-        DBG("Mask blend changed to: " << (newValue * 100.0f) << "%");
-=======
+        // TODO: SpectralSynthEngine::instance().getMaskSnapshot().setMaskBlend(newValue);
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "maskStrength")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue);
-<<<<<<< HEAD
-        DBG("Mask strength changed to: " << newValue);
-=======
+        // TODO: SpectralSynthEngine::instance().getMaskSnapshot().setMaskStrength(newValue);
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherTime")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue);
-<<<<<<< HEAD
-        DBG("Feather time changed to: " << (newValue * 1000.0f) << "ms");
-=======
+        // TODO: SpectralSynthEngine::instance().getMaskSnapshot().setFeatherTime(newValue);
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "featherFreq")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue);
-<<<<<<< HEAD
-        DBG("Feather frequency changed to: " << newValue << "Hz");
-=======
+        // TODO: SpectralSynthEngine::instance().getMaskSnapshot().setFeatherFreq(newValue);
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "threshold")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue);
-<<<<<<< HEAD
-        DBG("Mask threshold changed to: " << newValue << "dB");
-=======
+        // TODO: SpectralSynthEngine::instance().getMaskSnapshot().setThreshold(newValue);
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
     else if (parameterID == "protectHarmonics")
     {
-        SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f);
-<<<<<<< HEAD
-        DBG("Protect harmonics changed to: " << (newValue > 0.5f ? "ON" : "OFF"));
-=======
+        // TODO: SpectralSynthEngine::instance().getMaskSnapshot().setProtectHarmonics(newValue > 0.5f);
         // RT-safe: No logging from parameter listeners
->>>>>>> feat/claude/spectral-engine-sweep
     }
 }
 
@@ -830,44 +802,23 @@ void ARTEFACTAudioProcessor::processPaintCommand(const Command& cmd)
         // Send to both PaintEngine and SpectralSynthEngine for MetaSynth functionality
         paintEngine.beginStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure, cmd.color);
         
-        // Create PaintData for SpectralSynthEngine with MetaSynth mapping
+        // Create PaintEvent for SpectralSynthEngine
         {
-            SpectralSynthEngine::PaintData paintData;
-            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);  // Normalize assuming 8-second canvas
-            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f); // Normalize assuming 100-unit frequency range
-            paintData.pressure = cmd.pressure;
-            paintData.velocity = 0.5f;  // Default velocity
-            paintData.color = cmd.color;
-            paintData.timestamp = juce::Time::getMillisecondCounter();
-            
-            // Calculate derived parameters (this will be done by the engine)
-            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
-            paintData.amplitude = cmd.pressure;
-            paintData.panPosition = 0.0f;  // Will be calculated from color
-            paintData.synthMode = 0;
-            
-            SpectralSynthEngine::instance().processPaintStroke(paintData);
+            float nx = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);  // Normalize assuming 8-second canvas
+            float ny = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f); // Normalize assuming 100-unit frequency range
+            PaintEvent paintEvent(nx, ny, cmd.pressure, kStrokeStart);
+            SpectralSynthEngine::instance().pushGestureRT(paintEvent);
         }
         break;
     case PaintCommandID::UpdateStroke:
         paintEngine.updateStroke(PaintEngine::Point(cmd.x, cmd.y), cmd.pressure);
         
-        // Also send to SpectralSynthEngine for continuous MetaSynth processing
+        // Also send to SpectralSynthEngine for continuous processing
         {
-            SpectralSynthEngine::PaintData paintData;
-            paintData.timeNorm = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
-            paintData.freqNorm = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
-            paintData.pressure = cmd.pressure;
-            paintData.velocity = 0.7f;  // Higher velocity for updates
-            paintData.color = cmd.color;
-            paintData.timestamp = juce::Time::getMillisecondCounter();
-            
-            paintData.frequencyHz = 80.0f + paintData.freqNorm * (8000.0f - 80.0f);
-            paintData.amplitude = cmd.pressure;
-            paintData.panPosition = 0.0f;
-            paintData.synthMode = 0;
-            
-            SpectralSynthEngine::instance().processPaintStroke(paintData);
+            float nx = juce::jlimit(0.0f, 1.0f, cmd.x / 8.0f);
+            float ny = juce::jlimit(0.0f, 1.0f, cmd.y / 100.0f);
+            PaintEvent paintEvent(nx, ny, cmd.pressure, kStrokeMove);
+            SpectralSynthEngine::instance().pushGestureRT(paintEvent);
         }
         break;
     case PaintCommandID::EndStroke:

@@ -22,7 +22,7 @@
     std::ofstream traceFile("build/lifecycle_trace.txt", std::ios::app); \
     traceFile << "[Editor] " << msg << "\n"; \
     traceFile.flush(); \
-    OutputDebugStringA((std::string("[Editor] ") + msg + "\n").c_str()); \
+    DBG((std::string("[Editor] ") + msg).c_str()); \
 } while(0)
 #else
 #define TRACE(msg) do { } while(0)
@@ -36,8 +36,8 @@
 #include "GUI/PaintControlPanel.h"
 #include "Skin/SpectralLookAndFeel.h"
 #include "Skin/LogoComponent.h"
-#include "../ui/Controls.h"
-#include "../ui/Canvas.h"
+#include "../UI/Controls.h"
+#include "../UI/Canvas.h"
 #include "../state/StrokeEvents.h"
 
 // Forward declarations

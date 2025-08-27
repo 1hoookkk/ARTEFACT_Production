@@ -1,4 +1,4 @@
-﻿// GUI/ForgePanel.h
+// GUI/ForgePanel.h
 #pragma once
 
 #include <JuceHeader.h>
@@ -7,7 +7,9 @@
 
 // Forward declarations
 class ARTEFACTAudioProcessor;
-class SampleSlotComponent;
+
+// Need full include for unique_ptr
+#include "SampleSlotComponent.h"
 
 class ForgePanel : public juce::Component
 {

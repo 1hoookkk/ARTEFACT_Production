@@ -294,8 +294,8 @@ void ARTEFACTAudioProcessorEditor::timerCallback()
     // Update multicore HUD counters
     if (CrashToggles::ENABLE_HUD_COUNTERS)
     {
-        bool mcOn = audioProcessor.getSpectralSynthEngine().isMulticoreActive();
-        uint32_t seqFallbacks = audioProcessor.getSpectralSynthEngine().getSeqFallbackCount();
+        bool mcOn = false; // TODO: audioProcessor.getSpectralSynthEngine().isMulticoreActive();
+        uint32_t seqFallbacks = 0; // TODO: audioProcessor.getSpectralSynthEngine().getSeqFallbackCount();
         
         juce::String hud;
         hud << "MC: " << (mcOn ? "ON" : "OFF")

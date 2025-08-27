@@ -159,7 +159,7 @@ public:
                 logMessage("RESULT: Crash is NOT in processor constructor - it's in JUCE app/framework init");
             }
             catch (...) {
-                expectWithoutLogging(false, "CRASH FOUND: Processor constructor failed - this is the crash source!");
+                expect(false, "CRASH FOUND: Processor constructor failed - this is the crash source!");
                 logMessage("RESULT: Crash IS in processor constructor or static initialization");
             }
         }
